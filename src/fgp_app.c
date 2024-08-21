@@ -9,6 +9,7 @@
 #include <src/scenes/include/fgp_scene.h>
 
 #include <gblink.h>
+#include <protocols/printer_proto.h>
 
 bool fgp_custom_event_callback(void* context, uint32_t event)
 {
@@ -32,9 +33,11 @@ static struct fgp_app *fgp_alloc(void)
 
 	fgp = malloc(sizeof(struct fgp_app));
 
+	fgp->gblink_handle = gblink_alloc();
+	fgp->printer_handle = printer_alloc(fgp->gblink_handle, &fgp->data);
+
 	// View Dispatcher
 	fgp->view_dispatcher = view_dispatcher_alloc();
-	view_dispatcher_enable_queue(fgp->view_dispatcher);
 	view_dispatcher_set_event_callback_context(fgp->view_dispatcher, fgp);
 	view_dispatcher_set_custom_event_callback(fgp->view_dispatcher, fgp_custom_event_callback);
 	view_dispatcher_set_navigation_event_callback(fgp->view_dispatcher, fgp_back_event_callback);
@@ -45,23 +48,33 @@ static struct fgp_app *fgp_alloc(void)
 	// Submenu
 	fgp->submenu = submenu_alloc();
 	view_dispatcher_add_view(fgp->view_dispatcher, fgpViewSubmenu, submenu_get_view(fgp->submenu));
+
+	// Receive
+	//fgp->receive_handle = fgp_receive_view_alloc(fgp->gblink_handle);
+	//view_dispatcher_add_view(fgp->view_dispatcher, fgpViewReceive, fgp_receive_view_get(fgp->receive_handle));
 	
 	// Scene manager
 	fgp->scene_manager = scene_manager_alloc(&fgp_scene_handlers, fgp);
 	scene_manager_next_scene(fgp->scene_manager, fgpSceneMenu);
-
-	fgp->gblink_handle = gblink_alloc();
 
 	return fgp;
 }
 
 static void fgp_free(struct fgp_app *fgp)
 {
-	gblink_free(fgp->gblink_handle);
+	// Scene manager
+	scene_manager_free(fgp->scene_manager);
 
 	// submenu
 	view_dispatcher_remove_view(fgp->view_dispatcher, fgpViewSubmenu);
 	submenu_free(fgp->submenu);
+
+	// View dispatcher
+	view_dispatcher_free(fgp->view_dispatcher);
+
+	printer_free(fgp->printer_handle);
+	free(fgp->data);
+	gblink_free(fgp->gblink_handle);
 
 	free(fgp);
 }

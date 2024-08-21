@@ -24,7 +24,7 @@ void fgp_scene_menu_on_enter(void* context)
 	submenu_add_item(
 	fgp->submenu,
 	"Receive One",
-	fgpSceneMenu,
+	fgpSceneReceive,
 	scene_change_from_main_cb,
 	fgp);
 
