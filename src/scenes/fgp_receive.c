@@ -92,7 +92,7 @@ bool fgp_scene_receive_on_event(void* context, SceneManagerEvent event)
 			file = storage_file_alloc(fgp->storage);
 
 			path = furi_string_alloc_set(APP_DATA_PATH(""));
-			storage_get_next_filename(fgp->storage, APP_DATA_PATH(), "GC_", ".gbp", basename, 20);
+			storage_get_next_filename(fgp->storage, APP_DATA_PATH(), "GC_", ".bin", basename, 20);
 			furi_string_cat(path, basename);
 			furi_string_cat_str(path, ".gbp");
 
