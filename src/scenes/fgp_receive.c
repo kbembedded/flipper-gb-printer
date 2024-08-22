@@ -94,7 +94,7 @@ bool fgp_scene_receive_on_event(void* context, SceneManagerEvent event)
 			path = furi_string_alloc_set(APP_DATA_PATH(""));
 			storage_get_next_filename(fgp->storage, APP_DATA_PATH(), "GC_", ".bin", basename, 20);
 			furi_string_cat(path, basename);
-			furi_string_cat_str(path, ".gbp");
+			furi_string_cat_str(path, ".bin");
 
 			storage_common_resolve_path_and_ensure_app_directory(fgp->storage, path);
 			FURI_LOG_D("printer", "Using file %s", furi_string_get_cstr(path));
