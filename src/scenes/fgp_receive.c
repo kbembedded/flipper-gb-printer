@@ -7,10 +7,15 @@
 #include <protocols/printer_proto.h>
 #include <protocols/printer_receive.h>
 
+#include <src/helpers/bmp.h>
+
 /* XXX: TODO turn this in to an enum */
 #define DATA		0x80000000
 #define PRINT		0x40000000
 #define COMPLETE	0x20000000
+
+#define WIDTH 160L
+#define HEIGHT 144L
 
 static void printer_callback(void *context, void *buf, size_t len, enum cb_reason reason)
 {
@@ -84,6 +89,7 @@ bool fgp_scene_receive_on_event(void* context, SceneManagerEvent event)
 	File *file = NULL;
 	FuriString *path = NULL;
 	FuriString *basename = NULL;
+	FuriString *path_bmp = NULL;
 	bool consumed = false;
 
 	if (event.type == SceneManagerEventTypeCustom) {
@@ -91,6 +97,7 @@ bool fgp_scene_receive_on_event(void* context, SceneManagerEvent event)
 			basename = furi_string_alloc();
 			file = storage_file_alloc(fgp->storage);
 
+			//	Save Binary
 			path = furi_string_alloc_set(APP_DATA_PATH(""));
 			storage_get_next_filename(fgp->storage, APP_DATA_PATH(), "GC_", ".bin", basename, 20);
 			furi_string_cat(path, basename);
@@ -107,6 +114,57 @@ bool fgp_scene_receive_on_event(void* context, SceneManagerEvent event)
 			storage_file_write(file, fgp->data, fgp->len);
 			storage_file_free(file);
 			furi_string_free(path);
+			furi_string_free(basename);
+
+			//	Save Bmp Picture
+			File *bmp_file = storage_file_alloc(fgp->storage);
+			basename = furi_string_alloc();
+			path_bmp = furi_string_alloc_set_str(APP_DATA_PATH(""));
+			storage_get_next_filename(fgp->storage, APP_DATA_PATH(), "GC_", ".bmp", basename, 20);
+			furi_string_cat_str(path_bmp, furi_string_get_cstr(basename));
+			furi_string_cat_str(path_bmp, ".bmp");
+
+			storage_common_resolve_path_and_ensure_app_directory(fgp->storage, path_bmp);
+
+			// Abre el archivo BMP para escritura
+			static char bmp[BMP_SIZE(WIDTH, HEIGHT)];
+			bmp_init(bmp, WIDTH, HEIGHT);
+			
+			//  Palette
+			//	TODO: Agregar selector de paletas
+			uint32_t palette[] = {
+				bmp_encode(0xFFFFFF),
+				bmp_encode(0xAAAAAA),
+				bmp_encode(0x555555),
+				bmp_encode(0x000000)};
+			storage_file_open(bmp_file, furi_string_get_cstr(path_bmp), FSAM_READ_WRITE, FSOM_CREATE_ALWAYS);
+			uint8_t tile_data[16];
+			for(int y = 0; y < HEIGHT / 8; y++) {
+				for(int x = 0; x < WIDTH / 8; x++) {
+					int tile_index = (y * (WIDTH / 8) + x) * 16; // 16 bytes por tile
+					memcpy(tile_data, &((uint8_t*)fgp->data)[tile_index], 16);
+					for(int row = 0; row < 8; row++) {
+						uint8_t temp1 = tile_data[row * 2];
+						uint8_t temp2 = tile_data[row * 2 + 1];
+
+						for(int pixel = 7; pixel >= 0; pixel--) {
+							bmp_set(
+								bmp,
+								(x * 8) + pixel,
+								(y * 8) + row,
+								palette[((temp1 & 1) + ((temp2 & 1) * 2))]
+							);
+							temp1 >>= 1;
+							temp2 >>= 1;
+						}   
+					}
+				}
+			}
+			// Finalizar la imagen BMP
+			storage_file_write(bmp_file, bmp, sizeof(bmp));
+			storage_file_free(bmp_file);
+
+			furi_string_free(path_bmp);
 			furi_string_free(basename);
 
 			printer_receive_print_complete(fgp->printer_handle);
