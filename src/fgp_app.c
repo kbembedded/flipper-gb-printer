@@ -7,9 +7,11 @@
 #include <gui/view.h>
 #include <gui/view_dispatcher.h>
 #include <gui/modules/submenu.h>
+#include <gui/modules/variable_item_list.h>
 
 #include <src/include/fgp_app.h>
 #include <src/scenes/include/fgp_scene.h>
+#include <src/views/include/receive_view.h>
 
 #include <gblink.h>
 #include <protocols/printer_proto.h>
@@ -37,7 +39,6 @@ static struct fgp_app *fgp_alloc(void)
 	fgp = malloc(sizeof(struct fgp_app));
 
 	fgp->gblink_handle = gblink_alloc();
-	fgp->printer_handle = printer_alloc(fgp->gblink_handle, &fgp->data);
 
 	// View Dispatcher
 	fgp->view_dispatcher = view_dispatcher_alloc();
@@ -51,10 +52,16 @@ static struct fgp_app *fgp_alloc(void)
 	// Submenu
 	fgp->submenu = submenu_alloc();
 	view_dispatcher_add_view(fgp->view_dispatcher, fgpViewSubmenu, submenu_get_view(fgp->submenu));
+	
+	// Variable Item List
+	fgp->variable_item_list = variable_item_list_alloc();
+	view_dispatcher_add_view(fgp->view_dispatcher,
+				 fgpViewVariableItemList,
+				 variable_item_list_get_view(fgp->variable_item_list));
 
 	// Receive
-	//fgp->receive_handle = fgp_receive_view_alloc(fgp->gblink_handle);
-	//view_dispatcher_add_view(fgp->view_dispatcher, fgpViewReceive, fgp_receive_view_get(fgp->receive_handle));
+	fgp->receive_handle = fgp_receive_view_alloc(fgp);
+	view_dispatcher_add_view(fgp->view_dispatcher, fgpViewReceive, fgp_receive_view_get_view(fgp->receive_handle));
 	
 	// Scene manager
 	fgp->scene_manager = scene_manager_alloc(&fgp_scene_handlers, fgp);
@@ -68,15 +75,17 @@ static void fgp_free(struct fgp_app *fgp)
 	// Scene manager
 	scene_manager_free(fgp->scene_manager);
 
-	// submenu
+	// Variable Item List
+	view_dispatcher_remove_view(fgp->view_dispatcher, fgpViewVariableItemList);
+	variable_item_list_free(fgp->variable_item_list);
+
+	// Submenu
 	view_dispatcher_remove_view(fgp->view_dispatcher, fgpViewSubmenu);
 	submenu_free(fgp->submenu);
 
 	// View dispatcher
 	view_dispatcher_free(fgp->view_dispatcher);
 
-	printer_free(fgp->printer_handle);
-	free(fgp->data);
 	gblink_free(fgp->gblink_handle);
 
 	free(fgp);

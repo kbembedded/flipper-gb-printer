@@ -14,24 +14,28 @@
 #include <gui/scene_manager.h>
 #include <gui/view_dispatcher.h>
 #include <gui/modules/submenu.h>
+#include <gui/modules/variable_item_list.h>
 #include <storage/storage.h>
 
 struct fgp_app {
 	ViewDispatcher *view_dispatcher;
+
+	// Scenes
 	SceneManager *scene_manager;
 	Submenu *submenu;
+	VariableItemList *variable_item_list;
+
 	Storage *storage;
 
-	void *printer_handle;
-	void *data; // Buffer used to send or receive
-	size_t len; // Length of buffer data
-
+	void *receive_handle;
 	void *gblink_handle;
 
+	bool add_header;
 };
 
 typedef enum {
 	fgpViewSubmenu,
+	fgpViewVariableItemList,
 	fgpViewReceive,
 } fgpView;
 
