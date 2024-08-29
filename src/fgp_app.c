@@ -14,7 +14,6 @@
 #include <src/views/include/receive_view.h>
 
 #include <gblink.h>
-#include <protocols/printer_proto.h>
 
 bool fgp_custom_event_callback(void* context, uint32_t event)
 {

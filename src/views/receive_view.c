@@ -51,9 +51,11 @@ static void fgp_receive_view_timer(void *context)
 			true);
 }
 
-static void printer_callback(void *context, void *buf, size_t len, enum cb_reason reason)
+static void printer_callback(void *context, struct gb_image *image, enum cb_reason reason)
 {
 	struct recv_ctx *ctx = context;
+	void *buf = image->data;
+	size_t len = image->data_sz;
 	
 	FURI_LOG_D("printer", "printer_callback reason %d", (int)reason);
 
@@ -61,6 +63,23 @@ static void printer_callback(void *context, void *buf, size_t len, enum cb_reaso
 	case reason_data:
 		break;
 	case reason_print:
+		/* TODO: XXX: 
+		 * Interleave prints and processing here.
+		 * For the first photo, its safe to mark this as "printed" immediately
+		 * after copying the buffer. This lets the next print start quickly, e.g.
+		 * for doing a print all from Photo! or other prints that may take multiple
+		 * prints like panoramics.
+		 * Once the next photo comes in, we need to check if the save process is
+		 * still running, if not, then repeat above. If so, then I don't know yet.
+		 * Need to put this somewhere, somehow, maybe have a custom event re-call
+		 * this?
+		 * Set up a return.
+		 * Hmm.
+		 * This logic might need to move to the event handler, not here. In that
+		 * case, we probably need to double buffer. So if the first print is not
+		 * yet done, the second one can be copied here, and the event can, do something
+		 * with that and hold off on marking it printed.
+		 */
 		/* Copy the buffer from the printer to our local buffer to buy
 		 * us more time.
 		 */
@@ -179,7 +198,8 @@ static void fgp_receive_view_enter(void *context)
 
 	view_allocate_model(ctx->view, ViewModelTypeLockFree, sizeof(struct recv_model));
 
-	ctx->printer_handle = printer_alloc(ctx->gblink_handle, &ctx->data);
+	ctx->printer_handle = printer_alloc(ctx->gblink_handle);
+	ctx->data = printer_image_buffer_alloc();
 
 	ctx->storage = furi_record_open(RECORD_STORAGE);
 
