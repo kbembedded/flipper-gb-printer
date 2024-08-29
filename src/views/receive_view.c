@@ -22,6 +22,7 @@
 
 struct recv_model {
 	int count;
+	int converted;
 };
 
 struct recv_ctx {
@@ -34,8 +35,10 @@ struct recv_ctx {
 	// Printer handling
 	void *gblink_handle;
 	void *printer_handle;
-	void *data;
-	size_t len;
+
+	struct gb_image *volatile_image;
+	struct gb_image *image;
+	int packet_cnt;
 
 	// File operations
 	Storage *storage;
@@ -54,13 +57,13 @@ static void fgp_receive_view_timer(void *context)
 static void printer_callback(void *context, struct gb_image *image, enum cb_reason reason)
 {
 	struct recv_ctx *ctx = context;
-	void *buf = image->data;
-	size_t len = image->data_sz;
 	
 	FURI_LOG_D("printer", "printer_callback reason %d", (int)reason);
 
 	switch (reason) {
 	case reason_data:
+		ctx->packet_cnt++;
+		view_dispatcher_send_custom_event(ctx->view_dispatcher, DATA);
 		break;
 	case reason_print:
 		/* TODO: XXX: 
@@ -80,12 +83,7 @@ static void printer_callback(void *context, struct gb_image *image, enum cb_reas
 		 * yet done, the second one can be copied here, and the event can, do something
 		 * with that and hold off on marking it printed.
 		 */
-		/* Copy the buffer from the printer to our local buffer to buy
-		 * us more time.
-		 */
-		memcpy(ctx->data, buf, len);
-		ctx->len = len;
-
+		ctx->volatile_image = image;
 		view_dispatcher_send_custom_event(ctx->view_dispatcher, PRINT);
 		break;
 	case reason_complete:
@@ -99,13 +97,32 @@ static void printer_callback(void *context, struct gb_image *image, enum cb_reas
 static bool fgp_receive_view_event(uint32_t event, void *context)
 {
 	struct recv_ctx *ctx = context;
+	struct gb_image *image = ctx->image;
 	File *file = NULL;
 	FuriString *path = NULL;
 	FuriString *basename = NULL;
 	FuriString *path_bmp = NULL;
 	bool consumed = false;
 
+	if (event == DATA)
+		consumed = true;
+
 	if (event == PRINT) {
+		/* Copy the buffer from the printer data here, and then tell the
+		 * printer it can continue receiving.
+		 */
+		/* XXX: TODO: NOTE: I believe this is safe as I don't think this
+		 * event callback handle will be called again until this completes.
+		 * I need to verify which thread calls this and how the queue is
+		 * managed.
+		 */
+		printer_image_buffer_copy(image, ctx->volatile_image);
+		printer_receive_print_complete(ctx->printer_handle);
+		with_view_model(ctx->view,
+				struct recv_model * model,
+				{ model->count++; },
+				false);
+
 		basename = furi_string_alloc();
 		file = storage_file_alloc(ctx->storage);
 
@@ -123,7 +140,7 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		FURI_LOG_D("printer", "Using file %s", furi_string_get_cstr(path));
 		storage_file_open(file, furi_string_get_cstr(path), FSAM_READ_WRITE, FSOM_CREATE_ALWAYS);
 		storage_file_write(file, "GB-BIN01", 8);
-		storage_file_write(file, ctx->data, ctx->len);
+		storage_file_write(file, image->data, image->data_sz);
 		storage_file_free(file);
 		furi_string_free(path);
 		furi_string_free(basename);
@@ -154,7 +171,7 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		for(int y = 0; y < HEIGHT / 8; y++) {
 			for(int x = 0; x < WIDTH / 8; x++) {
 				int tile_index = (y * (WIDTH / 8) + x) * 16; // 16 bytes por tile
-				memcpy(tile_data, &((uint8_t*)ctx->data)[tile_index], 16);
+				memcpy(tile_data, &((uint8_t*)image->data)[tile_index], 16);
 				for(int row = 0; row < 8; row++) {
 					uint8_t temp1 = tile_data[row * 2];
 					uint8_t temp2 = tile_data[row * 2 + 1];
@@ -179,11 +196,9 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		furi_string_free(path_bmp);
 		furi_string_free(basename);
 
-		printer_receive_print_complete(ctx->printer_handle);
-
 		with_view_model(ctx->view,
 				struct recv_model * model,
-				{ model->count++; },
+				{ model->converted++; },
 				false);
 
 		consumed = true;
@@ -199,7 +214,7 @@ static void fgp_receive_view_enter(void *context)
 	view_allocate_model(ctx->view, ViewModelTypeLockFree, sizeof(struct recv_model));
 
 	ctx->printer_handle = printer_alloc(ctx->gblink_handle);
-	ctx->data = printer_image_buffer_alloc();
+	ctx->image = printer_image_buffer_alloc();
 
 	ctx->storage = furi_record_open(RECORD_STORAGE);
 
@@ -216,9 +231,12 @@ static void fgp_receive_view_exit(void *context)
 	struct recv_ctx *ctx = context;
 
 	furi_record_close(RECORD_STORAGE);
-	printer_stop(ctx->printer_handle);
 	furi_timer_free(ctx->timer);
+
+	printer_stop(ctx->printer_handle);
 	printer_free(ctx->printer_handle);
+
+	printer_image_buffer_free(ctx->image);
 	view_free_model(ctx->view);
 }
 
@@ -235,9 +253,11 @@ static bool fgp_receive_view_input(InputEvent *event, void *context)
 static void fgp_receive_view_draw(Canvas *canvas, void* view_model)
 {
 	struct recv_model *model = view_model;
-	char string[20];
+	char string[26];
 	snprintf(string, sizeof(string), "Received: %d", model->count);
 	canvas_draw_str(canvas, 18, 13, string);
+	snprintf(string, sizeof(string), "Converted to BMP: %d", model->converted);
+	canvas_draw_str(canvas, 18, 21, string);
 }
 
 View *fgp_receive_view_get_view(void *context)
@@ -270,6 +290,5 @@ void fgp_receive_view_free(void *recv_ctx)
 	struct recv_ctx *ctx = recv_ctx;
 
 	view_free(ctx->view);
-	free(ctx->data);
 	free(ctx);
 }
