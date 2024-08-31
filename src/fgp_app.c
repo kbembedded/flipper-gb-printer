@@ -74,6 +74,10 @@ static void fgp_free(struct fgp_app *fgp)
 	// Scene manager
 	scene_manager_free(fgp->scene_manager);
 
+	// Receive View
+	view_dispatcher_remove_view(fgp->view_dispatcher, fgpViewReceive);
+	fgp_receive_view_free(fgp->receive_handle);
+
 	// Variable Item List
 	view_dispatcher_remove_view(fgp->view_dispatcher, fgpViewVariableItemList);
 	variable_item_list_free(fgp->variable_item_list);
