@@ -7,6 +7,7 @@
 #include <stdio.h>
 
 #include <src/include/crc.h>
+#include <src/include/fgp_palette.h>
 
 /* XXX TODO NOTE:
  * the use of bswap32 is fine, but, should port some form of htonl and ntohl to
@@ -103,17 +104,6 @@ static const struct ihdr ihdr_data = {
 	.interlace_method = 0, // No interlacing
 };
 
-static const struct plte plte_data = {
-	.data_len = 201326592, // (uint32_t)__builtin_bswap32(12)
-	.type = { 'P', 'L', 'T', 'E' },
-	.color = {
-		{ 0xff, 0xff, 0xff },
-		{ 0xaa, 0xaa, 0xaa },
-		{ 0x55, 0x55, 0x55 },
-		{ 0x00, 0x00, 0x00 },
-	},
-};
-
 static const struct idat idat_data = {
 	.data_len = 0, // len is just the data itself
 	.type = { 'I', 'D', 'A', 'T' }, // Usually represented in ASCII
@@ -162,11 +152,40 @@ void png_stuff(void *png_handle, uint8_t *gb_buf)
 	png->footer_start->idat_crc = __builtin_bswap32(crc(png->image->idat.type, __builtin_bswap32(png->image->idat.data_len) + 4));
 }
 
+
+// Función de inicialización
+void initialize_palette(struct plte *plte_data, const Palette palette) {
+    plte_data->data_len = __builtin_bswap32(12); // Longitud de datos en formato big endian
+    plte_data->type[0] = 'P';
+    plte_data->type[1] = 'L';
+    plte_data->type[2] = 'T';
+    plte_data->type[3] = 'E';
+
+    plte_data->color[0][0] = (palette.palette_color_hex_a >> 16) & 0xFF;
+    plte_data->color[0][1] = (palette.palette_color_hex_a >> 8) & 0xFF;
+    plte_data->color[0][2] = palette.palette_color_hex_a & 0xFF;
+
+    plte_data->color[1][0] = (palette.palette_color_hex_b >> 16) & 0xFF;
+    plte_data->color[1][1] = (palette.palette_color_hex_b >> 8) & 0xFF;
+    plte_data->color[1][2] = palette.palette_color_hex_b & 0xFF;
+
+    plte_data->color[2][0] = (palette.palette_color_hex_c >> 16) & 0xFF;
+    plte_data->color[2][1] = (palette.palette_color_hex_c >> 8) & 0xFF;
+    plte_data->color[2][2] = palette.palette_color_hex_c & 0xFF;
+
+    plte_data->color[3][0] = (palette.palette_color_hex_d >> 16) & 0xFF;
+    plte_data->color[3][1] = (palette.palette_color_hex_d >> 8) & 0xFF;
+    plte_data->color[3][2] = palette.palette_color_hex_d & 0xFF;
+}
+
 /* Allocates pixel array */
-void *png_init(uint32_t width, uint32_t height)
+void *png_init(uint32_t width, uint32_t height, const Palette palette)
 {
 	struct image *image = NULL;
 	struct png_handle *png = NULL;
+
+	struct plte plte_data;
+	initialize_palette(&plte_data, palette);
 
 	/* Allocate the data we will need.
 	 */

@@ -162,7 +162,7 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		storage_common_resolve_path_and_ensure_app_directory(ctx->storage, path_png);
 		storage_file_open(png_file, furi_string_get_cstr(path_png), FSAM_READ_WRITE, FSOM_CREATE_ALWAYS);
 
-		png_handle = png_init(160, 144);
+		png_handle = png_init(160, 144, palettes[ctx->fgp->palette]);
 		tile_to_scanline(png_buf, image->data);
 		png_stuff(png_handle, png_buf);
 
@@ -252,6 +252,7 @@ void *fgp_receive_view_alloc(struct fgp_app *fgp)
 
 	ctx->gblink_handle = fgp->gblink_handle;
 	ctx->view_dispatcher = fgp->view_dispatcher;
+	ctx->fgp = fgp;
 
 	ctx->view = view_alloc();
 	view_set_context(ctx->view, ctx);
