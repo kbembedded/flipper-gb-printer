@@ -10,7 +10,8 @@
 #include <protocols/printer_proto.h>
 #include <protocols/printer_receive.h>
 
-#include <src/helpers/bmp.h>
+#include <src/include/png.h>
+#include <src/include/tile_tools.h>
 
 /* XXX: TODO turn this in to an enum */
 #define DATA		0x80000000
@@ -101,8 +102,10 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 	File *file = NULL;
 	FuriString *path = NULL;
 	FuriString *basename = NULL;
-	FuriString *path_bmp = NULL;
+	FuriString *path_png = NULL;
 	bool consumed = false;
+	void *png_handle = NULL;
+	uint8_t png_buf[5760] = {0};
 
 	if (event == DATA)
 		consumed = true;
@@ -145,56 +148,33 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		furi_string_free(path);
 		furi_string_free(basename);
 
-		//	Save Bmp Picture
-		File *bmp_file = storage_file_alloc(ctx->storage);
+		//	Save PNG Picture
+		/* XXX: TODO: don't redo this effort, can use same path and just
+		 * different extension.
+		 */
+		File *png_file = storage_file_alloc(ctx->storage);
 		basename = furi_string_alloc();
-		path_bmp = furi_string_alloc_set_str(APP_DATA_PATH(""));
-		storage_get_next_filename(ctx->storage, APP_DATA_PATH(), "GC_", ".bmp", basename, 20);
-		furi_string_cat_str(path_bmp, furi_string_get_cstr(basename));
-		furi_string_cat_str(path_bmp, ".bmp");
+		path_png = furi_string_alloc_set_str(APP_DATA_PATH(""));
+		storage_get_next_filename(ctx->storage, APP_DATA_PATH(), "GC_", ".png", basename, 20);
+		furi_string_cat_str(path_png, furi_string_get_cstr(basename));
+		furi_string_cat_str(path_png, ".png");
 
-		storage_common_resolve_path_and_ensure_app_directory(ctx->storage, path_bmp);
+		storage_common_resolve_path_and_ensure_app_directory(ctx->storage, path_png);
+		storage_file_open(png_file, furi_string_get_cstr(path_png), FSAM_READ_WRITE, FSOM_CREATE_ALWAYS);
 
-		// Abre el archivo BMP para escritura
-		static char bmp[BMP_SIZE(WIDTH, HEIGHT)];
-		bmp_init(bmp, WIDTH, HEIGHT);
-		
-		//  Palette
-		//	TODO: Agregar selector de paletas
-		uint32_t palette[] = {
-			bmp_encode(0xFFFFFF),
-			bmp_encode(0xAAAAAA),
-			bmp_encode(0x555555),
-			bmp_encode(0x000000)};
-		storage_file_open(bmp_file, furi_string_get_cstr(path_bmp), FSAM_READ_WRITE, FSOM_CREATE_ALWAYS);
-		uint8_t tile_data[16];
-		for(int y = 0; y < HEIGHT / 8; y++) {
-			for(int x = 0; x < WIDTH / 8; x++) {
-				int tile_index = (y * (WIDTH / 8) + x) * 16; // 16 bytes por tile
-				memcpy(tile_data, &((uint8_t*)image->data)[tile_index], 16);
-				for(int row = 0; row < 8; row++) {
-					uint8_t temp1 = tile_data[row * 2];
-					uint8_t temp2 = tile_data[row * 2 + 1];
+		png_handle = png_init(160, 144);
+		tile_to_scanline(png_buf, image->data);
+		png_stuff(png_handle, png_buf);
 
-					for(int pixel = 7; pixel >= 0; pixel--) {
-						bmp_set(
-							bmp,
-							(x * 8) + pixel,
-							(y * 8) + row,
-							palette[((temp1 & 1) + ((temp2 & 1) * 2))]
-						);
-						temp1 >>= 1;
-						temp2 >>= 1;
-					}   
-				}
-			}
-		}
+
 		// Finalizar la imagen BMP
-		storage_file_write(bmp_file, bmp, sizeof(bmp));
-		storage_file_free(bmp_file);
+		storage_file_write(png_file, png_get_buf(png_handle), png_len(png_handle));
+		storage_file_free(png_file);
 
-		furi_string_free(path_bmp);
+		furi_string_free(path_png);
 		furi_string_free(basename);
+
+		png_free(png_handle);
 
 		with_view_model(ctx->view,
 				struct recv_model * model,
@@ -256,7 +236,7 @@ static void fgp_receive_view_draw(Canvas *canvas, void* view_model)
 	char string[26];
 	snprintf(string, sizeof(string), "Received: %d", model->count);
 	canvas_draw_str(canvas, 18, 13, string);
-	snprintf(string, sizeof(string), "Converted to BMP: %d", model->converted);
+	snprintf(string, sizeof(string), "Converted to PNG: %d", model->converted);
 	canvas_draw_str(canvas, 18, 21, string);
 }
 
