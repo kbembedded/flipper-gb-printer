@@ -9,7 +9,7 @@
 void png_stuff(void *png_handle, uint8_t *gb_buf);
 
 /* Allocates pixel array */
-void *png_init(uint32_t width, uint32_t height);
+void *png_init(uint32_t width, uint32_t height, const Palette plte_data);
 
 void png_free(void *png_handle);
 
