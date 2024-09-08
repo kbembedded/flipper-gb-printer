@@ -41,6 +41,9 @@ struct recv_ctx {
 	struct gb_image *image;
 	int packet_cnt;
 
+	// PNG handling
+	void *png_handle;
+
 	// File operations
 	Storage *storage;
 };
@@ -104,8 +107,7 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 	FuriString *basename = NULL;
 	FuriString *path_png = NULL;
 	bool consumed = false;
-	void *png_handle = NULL;
-	uint8_t png_buf[5760] = {0};
+	void *png_handle = ctx->png_handle;
 
 	if (event == DATA)
 		consumed = true;
@@ -119,7 +121,12 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		 * I need to verify which thread calls this and how the queue is
 		 * managed.
 		 */
-		printer_image_buffer_copy(image, ctx->volatile_image);
+		/* This copies everything except data */
+		memcpy(image, ctx->volatile_image, sizeof(struct gb_image));
+		/* Now copy the image data, but as scanlines rather than tiles */
+		tile_to_scanline(image->data, ctx->volatile_image->data);
+
+
 		printer_receive_print_complete(ctx->printer_handle);
 		with_view_model(ctx->view,
 				struct recv_model * model,
@@ -162,19 +169,16 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		storage_common_resolve_path_and_ensure_app_directory(ctx->storage, path_png);
 		storage_file_open(png_file, furi_string_get_cstr(path_png), FSAM_READ_WRITE, FSOM_CREATE_ALWAYS);
 
-		png_handle = png_init(160, 144, palettes[ctx->fgp->palette]);
-		tile_to_scanline(png_buf, image->data);
-		png_stuff(png_handle, png_buf);
-
+		png_reset(png_handle);
+		png_populate(png_handle, image->data);
+		png_palette_set_Palette(png_handle, palettes[ctx->fgp->palette]);
 
 		// Finalizar la imagen BMP
-		storage_file_write(png_file, png_get_buf(png_handle), png_len(png_handle));
+		storage_file_write(png_file, png_buf_get(png_handle), png_len_get(png_handle));
 		storage_file_free(png_file);
 
 		furi_string_free(path_png);
 		furi_string_free(basename);
-
-		png_free(png_handle);
 
 		with_view_model(ctx->view,
 				struct recv_model * model,
@@ -193,7 +197,12 @@ static void fgp_receive_view_enter(void *context)
 
 	view_allocate_model(ctx->view, ViewModelTypeLockFree, sizeof(struct recv_model));
 
-	ctx->printer_handle = printer_alloc(ctx->gblink_handle);
+	/* TODO: find a way to configure the pins from config settings earlier.
+	 * should be possible to move alloc to earlier scene and then just let
+	 * the pinout select scene directly set the pinouts.
+	 */
+	ctx->printer_handle = printer_alloc();
+	printer_pin_set_default(ctx->printer_handle, PINOUT_ORIGINAL);
 	ctx->image = printer_image_buffer_alloc();
 
 	ctx->storage = furi_record_open(RECORD_STORAGE);
@@ -201,6 +210,8 @@ static void fgp_receive_view_enter(void *context)
 	printer_callback_context_set(ctx->printer_handle, ctx);
 	printer_callback_set(ctx->printer_handle, printer_callback);
 	printer_receive_start(ctx->printer_handle);
+
+	ctx->png_handle = png_alloc(160, 144);
 
 	ctx->timer = furi_timer_alloc(fgp_receive_view_timer, FuriTimerTypePeriodic, ctx);
 	furi_timer_start(ctx->timer, furi_ms_to_ticks(200));
@@ -212,6 +223,8 @@ static void fgp_receive_view_exit(void *context)
 
 	furi_record_close(RECORD_STORAGE);
 	furi_timer_free(ctx->timer);
+
+	png_free(ctx->png_handle);
 
 	printer_stop(ctx->printer_handle);
 	printer_free(ctx->printer_handle);

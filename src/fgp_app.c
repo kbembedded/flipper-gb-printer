@@ -13,8 +13,6 @@
 #include <src/scenes/include/fgp_scene.h>
 #include <src/views/include/receive_view.h>
 
-#include <gblink.h>
-
 bool fgp_custom_event_callback(void* context, uint32_t event)
 {
 	furi_assert(context);
@@ -36,8 +34,6 @@ static struct fgp_app *fgp_alloc(void)
 	struct fgp_app *fgp = NULL;
 
 	fgp = malloc(sizeof(struct fgp_app));
-
-	fgp->gblink_handle = gblink_alloc();
 
 	// View Dispatcher
 	fgp->view_dispatcher = view_dispatcher_alloc();
@@ -88,8 +84,6 @@ static void fgp_free(struct fgp_app *fgp)
 
 	// View dispatcher
 	view_dispatcher_free(fgp->view_dispatcher);
-
-	gblink_free(fgp->gblink_handle);
 
 	free(fgp);
 }

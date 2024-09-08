@@ -83,7 +83,8 @@ struct png_handle {
 	 * copy to the start of footer inside image.
 	 */
 	struct image_footer *footer_start;
-	uint32_t lines;
+	uint32_t height;
+	uint32_t width;
 	uint32_t image_len; // Just the image data
 	uint32_t total_len; // This is the full image data from header to file end
 };
@@ -104,6 +105,11 @@ static const struct ihdr ihdr_data = {
 	.interlace_method = 0, // No interlacing
 };
 
+static const struct plte plte_data = {
+	.data_len = 201326592, // (uint32_t)__builtin_bswap32(12)
+	.type = { 'P', 'L', 'T', 'E' },
+};
+
 static const struct idat idat_data = {
 	.data_len = 0, // len is just the data itself
 	.type = { 'I', 'D', 'A', 'T' }, // Usually represented in ASCII
@@ -121,23 +127,52 @@ static const struct iend iend_data = {
 
 static const uint32_t iend_crc = 0x826042ae;
 
+void png_palette_set(void *png_handle, uint8_t rgb[4][3])
+{
+	struct png_handle *png = png_handle;
+	memcpy(&png->image->plte.color, rgb, 12); // This is a constant size
+	png->image->plte_crc = __builtin_bswap32(crc(png->image->plte.type, __builtin_bswap32(png->image->plte.data_len) + 4));
+}
 
-void png_stuff(void *png_handle, uint8_t *gb_buf)
+void png_palette_set_Palette(void *png_handle, const Palette palette)
+{
+	struct png_handle *png = png_handle;
+
+	png->image->plte.color[0][0] = (palette.palette_color_hex_a >> 16) & 0xFF;
+	png->image->plte.color[0][1] = (palette.palette_color_hex_a >> 8) & 0xFF;
+	png->image->plte.color[0][2] = palette.palette_color_hex_a & 0xFF;
+
+	png->image->plte.color[1][0] = (palette.palette_color_hex_b >> 16) & 0xFF;
+	png->image->plte.color[1][1] = (palette.palette_color_hex_b >> 8) & 0xFF;
+	png->image->plte.color[1][2] = palette.palette_color_hex_b & 0xFF;
+
+	png->image->plte.color[2][0] = (palette.palette_color_hex_c >> 16) & 0xFF;
+	png->image->plte.color[2][1] = (palette.palette_color_hex_c >> 8) & 0xFF;
+	png->image->plte.color[2][2] = palette.palette_color_hex_c & 0xFF;
+
+	png->image->plte.color[3][0] = (palette.palette_color_hex_d >> 16) & 0xFF;
+	png->image->plte.color[3][1] = (palette.palette_color_hex_d >> 8) & 0xFF;
+	png->image->plte.color[3][2] = palette.palette_color_hex_d & 0xFF;
+
+	png->image->plte_crc = __builtin_bswap32(crc(png->image->plte.type, __builtin_bswap32(png->image->plte.data_len) + 4));
+}
+
+void png_populate(void *png_handle, uint8_t *image_buf)
 {
 	struct png_handle *png = png_handle;
 	uint8_t *image_ptr = png->image->idat.image;
 	uint32_t a = 1, b = 0;
 	uint32_t i;
 
-	for (i = 0; i < png->lines; i++) {
+	for (i = 0; i < png->height; i++) {
 		/* Each row needs to begin with a 0 byte to indicate no filter
 		 * for that row.
 		 */
 		*image_ptr = 0x00;
 		image_ptr++;
-		memcpy(image_ptr, gb_buf, 40); // The magic number is that each row is 40 bytes long
+		memcpy(image_ptr, image_buf, 40); // The magic number is that each row is 40 bytes long
 		image_ptr += 40;
-		gb_buf += 40;
+		image_buf += 40;
 	}
 
 	/* Calculate zlib adler32 */
@@ -152,44 +187,45 @@ void png_stuff(void *png_handle, uint8_t *gb_buf)
 	png->footer_start->idat_crc = __builtin_bswap32(crc(png->image->idat.type, __builtin_bswap32(png->image->idat.data_len) + 4));
 }
 
+void *png_reset(void *png_handle)
+{
+	struct png_handle *png = png_handle;
+	struct image *image = png->image;
 
-// Función de inicialización
-void initialize_palette(struct plte *plte_data, const Palette palette) {
-    plte_data->data_len = __builtin_bswap32(12); // Longitud de datos en formato big endian
-    plte_data->type[0] = 'P';
-    plte_data->type[1] = 'L';
-    plte_data->type[2] = 'T';
-    plte_data->type[3] = 'E';
+	memset(image, '\0', png->total_len);
 
-    plte_data->color[0][0] = (palette.palette_color_hex_a >> 16) & 0xFF;
-    plte_data->color[0][1] = (palette.palette_color_hex_a >> 8) & 0xFF;
-    plte_data->color[0][2] = palette.palette_color_hex_a & 0xFF;
+	/* Copy in static data bits */
+	memcpy(&image->header, &png_hdr_data, sizeof(struct png_hdr));
+	memcpy(&image->ihdr, &ihdr_data, sizeof(struct ihdr));
+	memcpy(&image->plte, &plte_data, sizeof(struct plte));
+	png_palette_set(png_handle, palette_rgb16_get(0));
+	memcpy(&image->idat, &idat_data, sizeof(struct idat));
+	memcpy(&png->footer_start->iend, &iend_data, sizeof(struct iend));
+	png->footer_start->iend_crc = iend_crc;
 
-    plte_data->color[1][0] = (palette.palette_color_hex_b >> 16) & 0xFF;
-    plte_data->color[1][1] = (palette.palette_color_hex_b >> 8) & 0xFF;
-    plte_data->color[1][2] = palette.palette_color_hex_b & 0xFF;
+	/* Start adding in dynamic data */
+	image->ihdr.width = __builtin_bswap32(png->width);
+	image->ihdr.height = __builtin_bswap32(png->height);
+	image->idat.len = png->image_len;
+	image->idat.nlen = ~(png->image_len);
+	image->idat.data_len = __builtin_bswap32(png->image_len + 11); // 12 is zlib header/footer size
 
-    plte_data->color[2][0] = (palette.palette_color_hex_c >> 16) & 0xFF;
-    plte_data->color[2][1] = (palette.palette_color_hex_c >> 8) & 0xFF;
-    plte_data->color[2][2] = palette.palette_color_hex_c & 0xFF;
+	/* Calculate CRCs */
+	image->ihdr_crc = __builtin_bswap32(crc(image->ihdr.type, __builtin_bswap32(image->ihdr.data_len) + 4));
 
-    plte_data->color[3][0] = (palette.palette_color_hex_d >> 16) & 0xFF;
-    plte_data->color[3][1] = (palette.palette_color_hex_d >> 8) & 0xFF;
-    plte_data->color[3][2] = palette.palette_color_hex_d & 0xFF;
+	return png;
 }
 
 /* Allocates pixel array */
-void *png_init(uint32_t width, uint32_t height, const Palette palette)
+void *png_alloc(uint32_t width, uint32_t height)
 {
-	struct image *image = NULL;
 	struct png_handle *png = NULL;
-
-	struct plte plte_data;
-	initialize_palette(&plte_data, palette);
 
 	/* Allocate the data we will need.
 	 */
 	png = malloc(sizeof(struct png_handle));
+	png->width = width;
+	png->height = height;
 
 	/* Since image data is 4 px per bit, the image length is (height*width/4),
 	 * and, PNG has a byte starting each "scanline" (each row), so add in
@@ -201,30 +237,10 @@ void *png_init(uint32_t width, uint32_t height, const Palette palette)
 	 * data itself; plus the actual image data.
 	 */
 	png->total_len = sizeof(struct image) + sizeof(struct image_footer) + png->image_len;
-	png->lines = height;
 	png->image = malloc(png->total_len);
-	image = png->image;
 	png->footer_start = ((void *)(png->image) + sizeof(struct image) + png->image_len);
-	memset(image, '\0', png->total_len);
 
-	/* Copy in static data bits */
-	memcpy(&image->header, &png_hdr_data, sizeof(struct png_hdr));
-	memcpy(&image->ihdr, &ihdr_data, sizeof(struct ihdr));
-	memcpy(&image->plte, &plte_data, sizeof(struct plte));
-	memcpy(&image->idat, &idat_data, sizeof(struct idat));
-	memcpy(&png->footer_start->iend, &iend_data, sizeof(struct iend));
-	png->footer_start->iend_crc = iend_crc;
-
-	/* Start adding in dynamic data */
-	image->ihdr.width = __builtin_bswap32(width);
-	image->ihdr.height = __builtin_bswap32(height);
-	image->idat.len = png->image_len;
-	image->idat.nlen = ~(png->image_len);
-	image->idat.data_len = __builtin_bswap32(png->image_len + 11); // 12 is zlib header/footer size
-
-	/* Calculate CRCs */
-	image->ihdr_crc = __builtin_bswap32(crc(image->ihdr.type, __builtin_bswap32(image->ihdr.data_len) + 4));
-	image->plte_crc = __builtin_bswap32(crc(image->plte.type, __builtin_bswap32(image->plte.data_len) + 4));
+	png_reset(png);
 
 	return png;
 }
@@ -236,13 +252,13 @@ void png_free(void *png_handle)
 	free(png);
 }
 
-size_t png_len(void *png_handle)
+size_t png_len_get(void *png_handle)
 {
 	struct png_handle *png = png_handle;
 	return png->total_len;
 }
 
-uint8_t *png_get_buf(void *png_handle)
+uint8_t *png_buf_get(void *png_handle)
 {
 	struct png_handle *png = png_handle;
 	return (uint8_t *)png->image;

@@ -6,15 +6,21 @@
 
 #pragma once
 
-void png_stuff(void *png_handle, uint8_t *gb_buf);
+void *png_alloc(uint32_t width, uint32_t height);
 
-/* Allocates pixel array */
-void *png_init(uint32_t width, uint32_t height, const Palette plte_data);
+/* Set up image */
+void *png_reset(void *png_handle);
+
+void png_populate(void *png_handle, uint8_t *image_buf);
+
+void png_palette_set(void *png_handle, uint8_t rgb[3][4]);
+
+void png_palette_set_Palette(void *png_handle, const Palette plte_data);
 
 void png_free(void *png_handle);
 
-uint8_t *png_get_buf(void *png_handle);
+uint8_t *png_buf_get(void *png_handle);
 
-size_t png_len(void *png_handle);
+size_t png_len_get(void *png_handle);
 
 #endif // PNG_H
