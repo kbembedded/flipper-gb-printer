@@ -10,6 +10,7 @@
 #include <protocols/printer_proto.h>
 #include <protocols/printer_receive.h>
 
+#include <src/include/file_handling.h>
 #include <src/include/png.h>
 #include <src/include/tile_tools.h>
 
@@ -24,6 +25,7 @@
 struct recv_model {
 	int count;
 	int converted;
+	int errors;
 };
 
 struct recv_ctx {
@@ -45,7 +47,7 @@ struct recv_ctx {
 	void *png_handle;
 
 	// File operations
-	Storage *storage;
+	void *file_handle;
 };
 
 static void fgp_receive_view_timer(void *context)
@@ -102,12 +104,8 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 {
 	struct recv_ctx *ctx = context;
 	struct gb_image *image = ctx->image;
-	File *file = NULL;
-	FuriString *path = NULL;
-	FuriString *basename = NULL;
-	FuriString *path_png = NULL;
 	bool consumed = false;
-	void *png_handle = ctx->png_handle;
+	bool error = false;
 
 	if (event == DATA)
 		consumed = true;
@@ -133,57 +131,39 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 				{ model->count++; },
 				false);
 
-		basename = furi_string_alloc();
-		file = storage_file_alloc(ctx->storage);
+		/* Save binary version always */
+		error |= !fgp_storage_open(ctx->file_handle, ".bin");
+		error |= !fgp_storage_write(ctx->file_handle, image->data, image->data_sz);
+		error |= !fgp_storage_close(ctx->file_handle);
 
-		//	Save Binary
-		path = furi_string_alloc_set(APP_DATA_PATH(""));
-		storage_get_next_filename(ctx->storage, APP_DATA_PATH(), "GC_", ".bin", basename, 20);
-		furi_string_cat(path, basename);
-		furi_string_cat_str(path, ".bin");
+		if (ctx->fgp->add_header) {
+			error |= !fgp_storage_open(ctx->file_handle, "-hdr.bin");
+			error |= !fgp_storage_write(ctx->file_handle, "GB-BIN01", 8);
+			error |= !fgp_storage_write(ctx->file_handle, image->data, image->data_sz);
+			error |= !fgp_storage_close(ctx->file_handle);
+		}
 
-		/* XXX: Stop using this, time to complete this increases as there are more files.
-		 * Probably best to key file names on date, or seconds from epoc, or something.
-		 * Maybe let that be flexible?
-		 */
-		storage_common_resolve_path_and_ensure_app_directory(ctx->storage, path);
-		FURI_LOG_D("printer", "Using file %s", furi_string_get_cstr(path));
-		storage_file_open(file, furi_string_get_cstr(path), FSAM_READ_WRITE, FSOM_CREATE_ALWAYS);
-		storage_file_write(file, "GB-BIN01", 8);
-		storage_file_write(file, image->data, image->data_sz);
-		storage_file_free(file);
-		furi_string_free(path);
-		furi_string_free(basename);
+		/* Save PNG */
+		png_reset(ctx->png_handle);
+		png_populate(ctx->png_handle, image->data);
+		/* TODO: With multiple palettes, add palette shortname to extension */
+		error |= !fgp_storage_open(ctx->file_handle, ".png");
+		error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle), png_len_get(ctx->png_handle));
+		error |= !fgp_storage_close(ctx->file_handle);
 
-		//	Save PNG Picture
-		/* XXX: TODO: don't redo this effort, can use same path and just
-		 * different extension.
-		 */
-		File *png_file = storage_file_alloc(ctx->storage);
-		basename = furi_string_alloc();
-		path_png = furi_string_alloc_set_str(APP_DATA_PATH(""));
-		storage_get_next_filename(ctx->storage, APP_DATA_PATH(), "GC_", ".png", basename, 20);
-		furi_string_cat_str(path_png, furi_string_get_cstr(basename));
-		furi_string_cat_str(path_png, ".png");
+		fgp_storage_next_count(ctx->file_handle);
 
-		storage_common_resolve_path_and_ensure_app_directory(ctx->storage, path_png);
-		storage_file_open(png_file, furi_string_get_cstr(path_png), FSAM_READ_WRITE, FSOM_CREATE_ALWAYS);
-
-		png_reset(png_handle);
-		png_populate(png_handle, image->data);
-		png_palette_set_Palette(png_handle, palettes[ctx->fgp->palette]);
-
-		// Finalizar la imagen BMP
-		storage_file_write(png_file, png_buf_get(png_handle), png_len_get(png_handle));
-		storage_file_free(png_file);
-
-		furi_string_free(path_png);
-		furi_string_free(basename);
-
-		with_view_model(ctx->view,
-				struct recv_model * model,
-				{ model->converted++; },
-				false);
+		if (!error) {
+			with_view_model(ctx->view,
+					struct recv_model * model,
+					{ model->converted++; },
+					false);
+		} else {
+			with_view_model(ctx->view,
+					struct recv_model * model,
+					{ model->errors++; },
+					false);
+		}
 
 		consumed = true;
 	}
@@ -205,13 +185,15 @@ static void fgp_receive_view_enter(void *context)
 	printer_pin_set_default(ctx->printer_handle, PINOUT_ORIGINAL);
 	ctx->image = printer_image_buffer_alloc();
 
-	ctx->storage = furi_record_open(RECORD_STORAGE);
+	ctx->file_handle = fgp_storage_alloc("GCIM_", ".bin");
 
 	printer_callback_context_set(ctx->printer_handle, ctx);
 	printer_callback_set(ctx->printer_handle, printer_callback);
 	printer_receive_start(ctx->printer_handle);
 
 	ctx->png_handle = png_alloc(160, 144);
+
+	/* TODO: XXX: Set up filesystem stuff here, folder, get latest count, etc. */
 
 	ctx->timer = furi_timer_alloc(fgp_receive_view_timer, FuriTimerTypePeriodic, ctx);
 	furi_timer_start(ctx->timer, furi_ms_to_ticks(200));
@@ -221,7 +203,7 @@ static void fgp_receive_view_exit(void *context)
 {
 	struct recv_ctx *ctx = context;
 
-	furi_record_close(RECORD_STORAGE);
+	fgp_storage_free(ctx->file_handle);
 	furi_timer_free(ctx->timer);
 
 	png_free(ctx->png_handle);
@@ -251,6 +233,8 @@ static void fgp_receive_view_draw(Canvas *canvas, void* view_model)
 	canvas_draw_str(canvas, 18, 13, string);
 	snprintf(string, sizeof(string), "Converted to PNG: %d", model->converted);
 	canvas_draw_str(canvas, 18, 21, string);
+	snprintf(string, sizeof(string), "Conversion errors: %d", model->errors);
+	canvas_draw_str(canvas, 18, 29, string);
 }
 
 View *fgp_receive_view_get_view(void *context)
@@ -265,6 +249,8 @@ void *fgp_receive_view_alloc(struct fgp_app *fgp)
 
 	ctx->gblink_handle = fgp->gblink_handle;
 	ctx->view_dispatcher = fgp->view_dispatcher;
+	ctx->fgp = fgp;
+
 	ctx->fgp = fgp;
 
 	ctx->view = view_alloc();
