@@ -38,7 +38,7 @@ struct fgp_app {
 	void *gblink_handle;
 
 	bool add_header;
-	uint32_t palette;
+	unsigned int palette_idx;
 };
 
 typedef enum {

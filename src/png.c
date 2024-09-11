@@ -134,29 +134,6 @@ void png_palette_set(void *png_handle, uint8_t rgb[4][3])
 	png->image->plte_crc = __builtin_bswap32(crc(png->image->plte.type, __builtin_bswap32(png->image->plte.data_len) + 4));
 }
 
-void png_palette_set_Palette(void *png_handle, const Palette palette)
-{
-	struct png_handle *png = png_handle;
-
-	png->image->plte.color[0][0] = (palette.palette_color_hex_a >> 16) & 0xFF;
-	png->image->plte.color[0][1] = (palette.palette_color_hex_a >> 8) & 0xFF;
-	png->image->plte.color[0][2] = palette.palette_color_hex_a & 0xFF;
-
-	png->image->plte.color[1][0] = (palette.palette_color_hex_b >> 16) & 0xFF;
-	png->image->plte.color[1][1] = (palette.palette_color_hex_b >> 8) & 0xFF;
-	png->image->plte.color[1][2] = palette.palette_color_hex_b & 0xFF;
-
-	png->image->plte.color[2][0] = (palette.palette_color_hex_c >> 16) & 0xFF;
-	png->image->plte.color[2][1] = (palette.palette_color_hex_c >> 8) & 0xFF;
-	png->image->plte.color[2][2] = palette.palette_color_hex_c & 0xFF;
-
-	png->image->plte.color[3][0] = (palette.palette_color_hex_d >> 16) & 0xFF;
-	png->image->plte.color[3][1] = (palette.palette_color_hex_d >> 8) & 0xFF;
-	png->image->plte.color[3][2] = palette.palette_color_hex_d & 0xFF;
-
-	png->image->plte_crc = __builtin_bswap32(crc(png->image->plte.type, __builtin_bswap32(png->image->plte.data_len) + 4));
-}
-
 void png_populate(void *png_handle, uint8_t *image_buf)
 {
 	struct png_handle *png = png_handle;

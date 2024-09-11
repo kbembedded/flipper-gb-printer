@@ -15,8 +15,6 @@ void png_populate(void *png_handle, uint8_t *image_buf);
 
 void png_palette_set(void *png_handle, uint8_t rgb[3][4]);
 
-void png_palette_set_Palette(void *png_handle, const Palette plte_data);
-
 void png_free(void *png_handle);
 
 uint8_t *png_buf_get(void *png_handle);

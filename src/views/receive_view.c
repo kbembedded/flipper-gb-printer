@@ -106,11 +106,13 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 	struct gb_image *image = ctx->image;
 	bool consumed = false;
 	bool error = false;
+	FuriString *fs_tmp;
 
 	if (event == DATA)
 		consumed = true;
 
 	if (event == PRINT) {
+		fs_tmp = furi_string_alloc();
 		/* Copy the buffer from the printer data here, and then tell the
 		 * printer it can continue receiving.
 		 */
@@ -146,12 +148,15 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		/* Save PNG */
 		png_reset(ctx->png_handle);
 		png_populate(ctx->png_handle, image->data);
-		/* TODO: With multiple palettes, add palette shortname to extension */
-		error |= !fgp_storage_open(ctx->file_handle, ".png");
+		png_palette_set(ctx->png_handle, palette_rgb16_get(ctx->fgp->palette_idx));
+		furi_string_printf(fs_tmp, "-%s.png", palette_shortname_get(ctx->fgp->palette_idx));
+		error |= !fgp_storage_open(ctx->file_handle, furi_string_get_cstr(fs_tmp));
 		error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle), png_len_get(ctx->png_handle));
 		error |= !fgp_storage_close(ctx->file_handle);
 
 		fgp_storage_next_count(ctx->file_handle);
+
+		furi_string_free(fs_tmp);
 
 		if (!error) {
 			with_view_model(ctx->view,
@@ -177,9 +182,14 @@ static void fgp_receive_view_enter(void *context)
 
 	view_allocate_model(ctx->view, ViewModelTypeLockFree, sizeof(struct recv_model));
 
-	/* TODO: find a way to configure the pins from config settings earlier.
-	 * should be possible to move alloc to earlier scene and then just let
-	 * the pinout select scene directly set the pinouts.
+	/* XXX: TODO: Startup of this takes a long time. Presumably, it is all
+	 * of the storage allocation, directory creation, finding the latest
+	 * file number, etc. Because this runs at a higher priority than the
+	 * timer callback, setting up the draw timer first has no impact on
+	 * the issue.
+	 * I believe draw calls are also in the same context as this thread,
+	 * so I don't think there is a good way to issue a draw callback here.
+	 * Need to figure out a better way to handle this setup.
 	 */
 	ctx->printer_handle = printer_alloc();
 	printer_pin_set_default(ctx->printer_handle, PINOUT_ORIGINAL);
@@ -192,8 +202,6 @@ static void fgp_receive_view_enter(void *context)
 	printer_receive_start(ctx->printer_handle);
 
 	ctx->png_handle = png_alloc(160, 144);
-
-	/* TODO: XXX: Set up filesystem stuff here, folder, get latest count, etc. */
 
 	ctx->timer = furi_timer_alloc(fgp_receive_view_timer, FuriTimerTypePeriodic, ctx);
 	furi_timer_start(ctx->timer, furi_ms_to_ticks(200));
