@@ -7,8 +7,9 @@
 #include <src/include/fgp_app.h>
 #include <src/scenes/include/fgp_scene.h>
 
-#include <protocols/printer_proto.h>
-#include <protocols/printer_receive.h>
+// gblink protocol support
+#include <protocols/printer/include/printer_proto.h>
+#include <protocols/printer/include/printer_receive.h>
 
 #include <src/include/file_handling.h>
 #include <src/include/png.h>

@@ -7,7 +7,7 @@
 #pragma once
 
 // Libraries
-#include <gblink.h>
+#include <gblink/include/gblink.h>
 
 // FURI
 #include <furi.h>
