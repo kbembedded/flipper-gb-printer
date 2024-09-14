@@ -1,18 +1,15 @@
-# For details & more options, see documentation/AppManifests.md in firmware repo
-
 App(
-    appid="flipper_gb_printer",  # Must be unique
-    name="Flipper GB Printer",  # Displayed in menus
+    appid="flipper_gb_printer",
+    name="Flipper GB Printer",
     apptype=FlipperAppType.EXTERNAL,
     entry_point="fgp_app",
     stack_size=2 * 1024,
     fap_category="GPIO",
-    # Optional values
-    # fap_version="0.1",
+    fap_version="0.1",
     fap_icon="fgp_icon.png",  # 10x10 1-bit PNG
-    # fap_description="A simple app",
-    # fap_author="J. Doe",
-    # fap_weburl="https://github.com/user/template",
+    fap_description="Print from a Game Boy to Flipper Zero saving as PNG",
+    fap_author="Kris Bahnsen",
+    fap_weburl="https://github.com/kbembedded/flipper-gb-printer",
     # fap_icon_assets="images",  # Image assets to compile for this application
     fap_private_libs=[
         Lib(
