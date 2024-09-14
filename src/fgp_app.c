@@ -8,6 +8,7 @@
 #include <gui/view_dispatcher.h>
 #include <gui/modules/submenu.h>
 #include <gui/modules/variable_item_list.h>
+#include <storage/storage.h>
 
 #include <src/include/fgp_app.h>
 #include <src/scenes/include/fgp_scene.h>
@@ -32,8 +33,16 @@ bool fgp_back_event_callback(void* context)
 static struct fgp_app *fgp_alloc(void)
 {
 	struct fgp_app *fgp = NULL;
+	Storage *storage;
+	FuriString *fs_path;
 
 	fgp = malloc(sizeof(struct fgp_app));
+
+	storage = furi_record_open(RECORD_STORAGE);
+	fs_path = furi_string_alloc_set(APP_DATA_PATH(""));
+	storage_common_resolve_path_and_ensure_app_directory(storage, fs_path);
+	furi_string_free(fs_path);
+	furi_record_close(RECORD_STORAGE);
 
 	// View Dispatcher
 	fgp->view_dispatcher = view_dispatcher_alloc();
