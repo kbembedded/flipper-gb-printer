@@ -27,7 +27,7 @@ Connect a Game Boy to the Flipper through the link cable interface, open the `Fl
 **Palette**: Select one of 18 palettes to render the PNGs in. The default, `B&W`, is grayscale; and all other palettes are all approximations of 2-bit palettes used on real Game Boy devices or emulators.
 
 
-All files are saved to the Flipper's microSD card, in the `app_dir/flipper_gb_printer/` directory. They are organized in to subfolders dated `YYYY-MM-DD/` of the date the photos were printed to the Flipper Zero, and numbered in the order they were printed on each date.
+All files are saved to the Flipper's microSD card, in the `apps_dir/flipper_gb_printer/` directory. They are organized in to subfolders dated `YYYY-MM-DD/` of the date the photos were printed to the Flipper Zero, and numbered in the order they were printed on each date.
 
 ## Palettes
 TODO
