@@ -24,6 +24,9 @@ void fgp_scene_menu_on_enter(void* context)
 	submenu_reset(fgp->submenu);
 	submenu_set_header(fgp->submenu, "Game Boy Printer");
 
+	/* Init config variables here */
+	fgp->palette_idx = 0;
+
 	submenu_add_item(
 	fgp->submenu,
 	"Receive from GB",

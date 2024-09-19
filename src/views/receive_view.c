@@ -37,7 +37,6 @@ struct recv_ctx {
 	ViewDispatcher *view_dispatcher;
 	
 	// Printer handling
-	void *gblink_handle;
 	void *printer_handle;
 
 	struct gb_image *volatile_image;
@@ -200,9 +199,8 @@ static void fgp_receive_view_enter(void *context)
 	 * so I don't think there is a good way to issue a draw callback here.
 	 * Need to figure out a better way to handle this setup.
 	 */
-	ctx->printer_handle = printer_alloc();
-	printer_pin_set_default(ctx->printer_handle, PINOUT_ORIGINAL);
 	ctx->image = printer_image_buffer_alloc();
+	ctx->printer_handle = ctx->fgp->printer_handle;
 
 	ctx->file_handle = fgp_storage_alloc("GCIM_", ".bin");
 
@@ -226,7 +224,6 @@ static void fgp_receive_view_exit(void *context)
 	png_free(ctx->png_handle);
 
 	printer_stop(ctx->printer_handle);
-	printer_free(ctx->printer_handle);
 
 	printer_image_buffer_free(ctx->image);
 	view_free_model(ctx->view);
@@ -264,10 +261,7 @@ void *fgp_receive_view_alloc(struct fgp_app *fgp)
 {
 	struct recv_ctx *ctx = malloc(sizeof(struct recv_ctx));
 
-	ctx->gblink_handle = fgp->gblink_handle;
 	ctx->view_dispatcher = fgp->view_dispatcher;
-	ctx->fgp = fgp;
-
 	ctx->fgp = fgp;
 
 	ctx->view = view_alloc();
