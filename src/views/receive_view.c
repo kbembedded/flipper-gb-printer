@@ -41,6 +41,8 @@ struct recv_ctx {
 
 	struct gb_image *volatile_image;
 	struct gb_image *image;
+	/* TODO: Once tile to scanline can do better inplace, remove this */
+	struct gb_image *image_copy;
 	int packet_cnt;
 
 	// PNG handling
@@ -109,6 +111,9 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 	FuriString *fs_tmp;
 	uint8_t px_y = 0;
 	uint8_t px_x = 0;
+	bool last_margin_zero = false;
+	bool same_image = false;
+	enum png_chunks chunk;
 
 	if (event == DATA)
 		consumed = true;
@@ -123,16 +128,39 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		 * I need to verify which thread calls this and how the queue is
 		 * managed.
 		 */
+		/* Before we clobber the image data, take note of the margins.
+		 * If the last bottom margin was 0, and this top margin is 0,
+		 * then we need to append this image to the last image we saved.
+		 * Also, assuming if data_sz is 0, that this is the first image
+		 * being printed since the application was launched.
+		 */
+		if (!(image->margins & 0x0f) && image->data_sz)
+			last_margin_zero = true;
+
 		/* This copies everything except data */
 		memcpy(image, ctx->volatile_image, sizeof(struct gb_image));
+
+		/* Now look at the margins of this image, if there is no margin
+		 * at the start, and there was no margin at the end of the last
+		 * image, then assume these are intended to be the same image.
+		 */
+		if (last_margin_zero && !(image->margins & 0xf0))
+			same_image = true;
+
+		/* If the last margin was zero, we didn't increment the file count.
+		 * So if the last margin was zero, but its not hte same image,
+		 * then bump the file count now.
+		 */
+		if (last_margin_zero && !same_image)
+			fgp_storage_next_count(ctx->file_handle);
 
 		/* Prep some image information */
 		px_x = 160; // TODO: Photo! transfer will be less than this
 		px_y = image->data_sz / 40; // 40 is bytes per line, 160 px / 4 (px/byte)
 
-		/* Now copy the image data, but as scanlines rather than tiles */
-		/* Tiles are 8x8 px */
-		tile_to_scanline(image->data, ctx->volatile_image->data, px_x / 8, px_y / 8);
+		/* Copy the volatile data to our local copy. */
+		/* TODO: This will go away at some point */
+		memcpy(ctx->image_copy->data, ctx->volatile_image->data, image->data_sz);
 
 
 		printer_receive_print_complete(ctx->printer_handle);
@@ -141,28 +169,65 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 				{ model->count++; },
 				false);
 
+		/* Now copy the image data, but as scanlines rather than tiles */
+		/* Tiles are 8x8 px */
+		tile_to_scanline(image->data, ctx->image_copy->data, px_x / 8, px_y / 8);
+
 		/* Save binary version always */
+		/* We don't care if this was previously opened or not, we just
+		 * need to blindly append data to it and its fine.
+		 */
 		error |= !fgp_storage_open(ctx->file_handle, ".bin");
-		error |= !fgp_storage_write(ctx->file_handle, image->data, image->data_sz);
+		error |= !fgp_storage_write(ctx->file_handle, ctx->image_copy->data, image->data_sz);
 		error |= !fgp_storage_close(ctx->file_handle);
 
+		/* Similare above, we want to just append to this file, but, if
+		 * this is the same image, we don't want to re-add the header.
+		 */
 		if (ctx->fgp->add_header) {
 			error |= !fgp_storage_open(ctx->file_handle, "-hdr.bin");
-			error |= !fgp_storage_write(ctx->file_handle, "GB-BIN01", 8);
-			error |= !fgp_storage_write(ctx->file_handle, image->data, image->data_sz);
+			if (!same_image)
+				error |= !fgp_storage_write(ctx->file_handle, "GB-BIN01", 8);
+			error |= !fgp_storage_write(ctx->file_handle, ctx->image_copy->data, image->data_sz);
 			error |= !fgp_storage_close(ctx->file_handle);
 		}
 
 		/* Save PNG */
-		png_reset(ctx->png_handle, px_x, px_y);
-		png_populate(ctx->png_handle, image->data);
-		png_palette_set(ctx->png_handle, palette_rgb16_get(ctx->fgp->palette_idx));
-		furi_string_printf(fs_tmp, "-%s.png", palette_shortname_get(ctx->fgp->palette_idx));
-		error |= !fgp_storage_open(ctx->file_handle, furi_string_get_cstr(fs_tmp));
-		error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle), png_len_get(ctx->png_handle));
-		error |= !fgp_storage_close(ctx->file_handle);
+		if (!same_image) {
+			png_reset(ctx->png_handle, px_x, px_y);
+			png_dat_write(ctx->png_handle, image->data);
+			png_palette_set(ctx->png_handle, palette_rgb16_get(ctx->fgp->palette_idx));
+			furi_string_printf(fs_tmp, "-%s.png", palette_shortname_get(ctx->fgp->palette_idx));
+			error |= !fgp_storage_open(ctx->file_handle, furi_string_get_cstr(fs_tmp));
+			for (chunk = CHUNK_START; chunk < CHUNK_COUNT; chunk++)
+				error |= !fgp_storage_write(ctx->file_handle,
+							    png_buf_get(ctx->png_handle, chunk),
+							    png_len_get(ctx->png_handle, chunk));
+			error |= !fgp_storage_close(ctx->file_handle);
+		} else {
+			png_deflate_unfinal(ctx->png_handle);
 
-		fgp_storage_next_count(ctx->file_handle);
+			furi_string_printf(fs_tmp, "-%s.png", palette_shortname_get(ctx->fgp->palette_idx));
+
+			/* TODO: Document this */
+			error |= !fgp_storage_open(ctx->file_handle, furi_string_get_cstr(fs_tmp));
+			error |= !fgp_storage_seek(ctx->file_handle, -(png_len_get(ctx->png_handle, LAST_IDAT)), false);
+			error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle, IDAT), png_len_get(ctx->png_handle, IDAT));
+			png_add_height(ctx->png_handle, px_y);
+			png_dat_write(ctx->png_handle, image->data);
+			/* Palette is unchanged */
+			error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle, IDAT), png_len_get(ctx->png_handle, IDAT));
+
+			error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle, IDAT_CHECK), png_len_get(ctx->png_handle, IDAT_CHECK));
+			error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle, IEND), png_len_get(ctx->png_handle, IEND));
+			error |= !fgp_storage_seek(ctx->file_handle, 0, true);
+			error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle, IHDR), png_len_get(ctx->png_handle, IHDR));
+			error |= !fgp_storage_close(ctx->file_handle);
+		}
+
+		/* Don't increment yet if the end margin is 0 */
+		if ((image->margins & 0x0f))
+			fgp_storage_next_count(ctx->file_handle);
 
 		furi_string_free(fs_tmp);
 
@@ -200,6 +265,7 @@ static void fgp_receive_view_enter(void *context)
 	 * Need to figure out a better way to handle this setup.
 	 */
 	ctx->image = printer_image_buffer_alloc();
+	ctx->image_copy = printer_image_buffer_alloc();
 	ctx->printer_handle = ctx->fgp->printer_handle;
 
 	ctx->file_handle = fgp_storage_alloc("GCIM_", ".bin");
@@ -226,6 +292,7 @@ static void fgp_receive_view_exit(void *context)
 	printer_stop(ctx->printer_handle);
 
 	printer_image_buffer_free(ctx->image);
+	printer_image_buffer_free(ctx->image_copy);
 	view_free_model(ctx->view);
 }
 

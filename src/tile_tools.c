@@ -7,6 +7,9 @@
 /* Copy src to dst converting from gb tile format to scanline format for
  * standard image data.
  */
+/* TODO: Make this able to run against a single buffer rather than copying from
+ * one buffer to another.
+ */
 void tile_to_scanline(uint8_t *dst, uint8_t *src, size_t tiles_w, size_t tiles_h)
 {
 	//size_t tile_w = 2; // 2 byte wide
