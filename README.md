@@ -26,6 +26,8 @@ Connect a Game Boy to the Flipper through the link cable interface, open the `Fl
 
 **Palette**: Select one of 18 palettes to render the PNGs in. The default, `B&W`, is grayscale; and all other palettes are all approximations of 2-bit palettes used on real Game Boy devices or emulators.
 
+**Select Pinout**: Configure the pin interface on the Flipper Zero. This defaults to `Original` and is likely what you want to use in most cases. Most of the adapters that exist as well as instructions on making custom cables, use this pinout. The `MLVK2.5` pinout is used for MALVEKE boards that are hardware revision 2.5 or lower. The 2.5.1 version of the MALVEKE uses the `Original` pinout.
+
 
 All files are saved to the Flipper's microSD card, in the `apps_dir/flipper_gb_printer/` directory. They are organized in to subfolders dated `YYYY-MM-DD/` of the date the photos were printed to the Flipper Zero, and numbered in the order they were printed on each date.
 
