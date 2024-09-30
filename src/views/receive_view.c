@@ -76,7 +76,7 @@ static void printer_callback(void *context, struct gb_image *image, enum cb_reas
 		 * For the first photo, its safe to mark this as "printed" immediately
 		 * after copying the buffer. This lets the next print start quickly, e.g.
 		 * for doing a print all from Photo! or other prints that may take multiple
-		 * prints like panoramics.
+		 * prints like panoramas.
 		 * Once the next photo comes in, we need to check if the save process is
 		 * still running, if not, then repeat above. If so, then I don't know yet.
 		 * Need to put this somewhere, somehow, maybe have a custom event re-call
@@ -145,7 +145,7 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 			same_image = true;
 
 		/* If the last margin was zero, we didn't increment the file count.
-		 * So if the last margin was zero, but its not hte same image,
+		 * So if the last margin was zero, but its not the same image,
 		 * then bump the file count now.
 		 */
 		if (last_margin_zero && !same_image)
@@ -174,20 +174,25 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		/* We don't care if this was previously opened or not, we just
 		 * need to blindly append data to it and its fine.
 		 */
-		error |= !fgp_storage_open(ctx->file_handle, ".bin");
-		error |= !fgp_storage_write(ctx->file_handle, ctx->image_copy->data, image->data_sz);
-		error |= !fgp_storage_close(ctx->file_handle);
+		if (ctx->fgp->options & OPT_SAVE_BIN) {
+			error |= !fgp_storage_open(ctx->file_handle, ".bin");
+			error |= !fgp_storage_write(ctx->file_handle, ctx->image_copy->data, image->data_sz);
+			error |= !fgp_storage_close(ctx->file_handle);
+		}
 
-		/* Similare above, we want to just append to this file, but, if
+		/* Similar above, we want to just append to this file, but, if
 		 * this is the same image, we don't want to re-add the header.
 		 */
-		if (ctx->fgp->add_header) {
+		if (ctx->fgp->options & OPT_SAVE_BIN_HDR) {
 			error |= !fgp_storage_open(ctx->file_handle, "-hdr.bin");
 			if (!same_image)
 				error |= !fgp_storage_write(ctx->file_handle, "GB-BIN01", 8);
 			error |= !fgp_storage_write(ctx->file_handle, ctx->image_copy->data, image->data_sz);
 			error |= !fgp_storage_close(ctx->file_handle);
 		}
+
+		if (!(ctx->fgp->options & OPT_SAVE_PNG))
+			goto skip_png;
 
 		/* Save PNG */
 		if (!same_image) {
@@ -205,7 +210,7 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 			furi_string_printf(fs_tmp, "-%s.png", palette_shortname_get(ctx->fgp->palette_idx));
 
 			/* The PNGs are saved with multiple IDAT chunks to make
-			 * epanding the images "easier". The first IDAT chunk is
+			 * expanding the images "easier". The first IDAT chunk is
 			 * the zlib header. +n IDAT chunks are images, each with
 			 * their own DEFLATE header. These can be up to 144 px tall
 			 * but can also be less. The last IDAT chunk is the adler32
@@ -243,12 +248,6 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 			error |= !fgp_storage_close(ctx->file_handle);
 		}
 
-		/* Don't increment yet if the end margin is 0 */
-		if ((image->margins & 0x0f))
-			fgp_storage_next_count(ctx->file_handle);
-
-		furi_string_free(fs_tmp);
-
 		if (!error) {
 			with_view_model(ctx->view,
 					struct recv_model * model,
@@ -260,6 +259,13 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 					{ model->errors++; },
 					false);
 		}
+
+skip_png:
+		/* Don't increment yet if the end margin is 0 */
+		if ((image->margins & 0x0f))
+			fgp_storage_next_count(ctx->file_handle);
+
+		furi_string_free(fs_tmp);
 
 		consumed = true;
 	}
@@ -332,7 +338,7 @@ static void fgp_receive_view_draw(Canvas *canvas, void* view_model)
 	canvas_draw_str(canvas, 18, 13, string);
 	snprintf(string, sizeof(string), "Converted to PNG: %d", model->converted);
 	canvas_draw_str(canvas, 18, 21, string);
-	snprintf(string, sizeof(string), "Conversion errors: %d", model->errors);
+	snprintf(string, sizeof(string), "Errors: %d", model->errors);
 	canvas_draw_str(canvas, 18, 29, string);
 }
 
