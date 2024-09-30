@@ -177,20 +177,25 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		/* We don't care if this was previously opened or not, we just
 		 * need to blindly append data to it and its fine.
 		 */
-		error |= !fgp_storage_open(ctx->file_handle, ".bin");
-		error |= !fgp_storage_write(ctx->file_handle, ctx->image_copy->data, image->data_sz);
-		error |= !fgp_storage_close(ctx->file_handle);
+		if (ctx->fgp->options | OPT_SAVE_BIN) {
+			error |= !fgp_storage_open(ctx->file_handle, ".bin");
+			error |= !fgp_storage_write(ctx->file_handle, ctx->image_copy->data, image->data_sz);
+			error |= !fgp_storage_close(ctx->file_handle);
+		}
 
 		/* Similare above, we want to just append to this file, but, if
 		 * this is the same image, we don't want to re-add the header.
 		 */
-		if (ctx->fgp->add_header) {
+		if (ctx->fgp->options | OPT_SAVE_BIN_HDR) {
 			error |= !fgp_storage_open(ctx->file_handle, "-hdr.bin");
 			if (!same_image)
 				error |= !fgp_storage_write(ctx->file_handle, "GB-BIN01", 8);
 			error |= !fgp_storage_write(ctx->file_handle, ctx->image_copy->data, image->data_sz);
 			error |= !fgp_storage_close(ctx->file_handle);
 		}
+
+		if (!(ctx->fgp->options & OPT_SAVE_PNG))
+			goto skip_png;
 
 		/* Save PNG */
 		if (!same_image) {
@@ -205,31 +210,46 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 							    png_len_get(ctx->png_handle, chunk));
 			error |= !fgp_storage_close(ctx->file_handle);
 		} else {
-			png_deflate_unfinal(ctx->png_handle);
-
 			furi_string_printf(fs_tmp, "-%s.png", palette_shortname_get(ctx->fgp->palette_idx));
 
-			/* TODO: Document this */
+			/* The PNGs are saved with multiple IDAT chunks to make
+			 * epanding the images "easier". The first IDAT chunk is
+			 * the zlib header. +n IDAT chunks are images, each with
+			 * their own DEFLATE header. These can be up to 144 px tall
+			 * but can also be less. The last IDAT chunk is the adler32
+			 * zlib checksum.
+			 *
+			 * In order to expand an existing PNG image all we have to
+			 * is:
+			 * - Unset the BFINAL flag in the last image IDAT section
+			 *   that we still have in memory.
+			 * - Seek to the start of the last IDAT chunk with image data,
+			 *   This is the special LAST_IDAT offset.
+			 * - Rewrite the previous image (with BFINAL unset)
+			 * - Update the image buffer with the new height, which
+			 *   is also added to the IHDR in memory.
+			 * - Write the new image data to the image buffer,
+			 *   which also updates the running adler32.
+			 * - Write the new image data to disk.
+			 * - Rewrite the IDAT_CHECK, adler32 IDAT section.
+			 * - Rewrite IEND (which is static anyway).
+			 * - Jump to start of file.
+			 * - Finally, rewrite IHDR with the updated height of
+			 *   the full image.
+			 */
+			png_deflate_unfinal(ctx->png_handle);
 			error |= !fgp_storage_open(ctx->file_handle, furi_string_get_cstr(fs_tmp));
 			error |= !fgp_storage_seek(ctx->file_handle, -(png_len_get(ctx->png_handle, LAST_IDAT)), false);
 			error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle, IDAT), png_len_get(ctx->png_handle, IDAT));
 			png_add_height(ctx->png_handle, px_y);
 			png_dat_write(ctx->png_handle, image->data);
-			/* Palette is unchanged */
 			error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle, IDAT), png_len_get(ctx->png_handle, IDAT));
-
 			error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle, IDAT_CHECK), png_len_get(ctx->png_handle, IDAT_CHECK));
 			error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle, IEND), png_len_get(ctx->png_handle, IEND));
 			error |= !fgp_storage_seek(ctx->file_handle, 0, true);
 			error |= !fgp_storage_write(ctx->file_handle, png_buf_get(ctx->png_handle, IHDR), png_len_get(ctx->png_handle, IHDR));
 			error |= !fgp_storage_close(ctx->file_handle);
 		}
-
-		/* Don't increment yet if the end margin is 0 */
-		if ((image->margins & 0x0f))
-			fgp_storage_next_count(ctx->file_handle);
-
-		furi_string_free(fs_tmp);
 
 		if (!error) {
 			with_view_model(ctx->view,
@@ -242,6 +262,13 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 					{ model->errors++; },
 					false);
 		}
+
+skip_png:
+		/* Don't increment yet if the end margin is 0 */
+		if ((image->margins & 0x0f))
+			fgp_storage_next_count(ctx->file_handle);
+
+		furi_string_free(fs_tmp);
 
 		consumed = true;
 	}
@@ -314,7 +341,7 @@ static void fgp_receive_view_draw(Canvas *canvas, void* view_model)
 	canvas_draw_str(canvas, 18, 13, string);
 	snprintf(string, sizeof(string), "Converted to PNG: %d", model->converted);
 	canvas_draw_str(canvas, 18, 21, string);
-	snprintf(string, sizeof(string), "Conversion errors: %d", model->errors);
+	snprintf(string, sizeof(string), "Errors: %d", model->errors);
 	canvas_draw_str(canvas, 18, 29, string);
 }
 
