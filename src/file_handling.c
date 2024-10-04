@@ -11,6 +11,7 @@ struct fgp_storage {
 	uint16_t count;
 };
 
+/* XXX: TODO: This doesn't check for exceeding 9999 */
 void fgp_storage_next_count(void *fgp_storage)
 {
 	struct fgp_storage *storage = fgp_storage;

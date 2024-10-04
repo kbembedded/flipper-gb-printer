@@ -18,12 +18,6 @@
 #include <storage/storage.h>
 #include <src/include/fgp_palette.h>
 
-struct plte {
-    uint32_t data_len;     // Longitud de los datos de la paleta (en bytes)
-    uint8_t type[4];       // Tipo de chunk PLTE ('P', 'L', 'T', 'E')
-    uint8_t color[4][3];   // Colores en formato RGB, 4 colores con 3 bytes cada uno
-};
-
 struct fgp_app {
 	ViewDispatcher *view_dispatcher;
 
