@@ -26,6 +26,7 @@ struct fgp_app {
 	Submenu *submenu;
 	VariableItemList *variable_item_list;
 	void *receive_view;
+	void *send_view;
 
 	Storage *storage;
 
@@ -39,6 +40,7 @@ typedef enum {
 	fgpViewSubmenu,
 	fgpViewVariableItemList,
 	fgpViewReceive,
+	fgpViewSend,
 } fgpView;
 
 #endif // FGP_APP_H

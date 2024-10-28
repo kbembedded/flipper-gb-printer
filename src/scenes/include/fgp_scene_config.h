@@ -3,4 +3,5 @@
 
 ADD_SCENE(fgp,	menu,		Menu)
 ADD_SCENE(fgp,	receive_conf,	ReceiveConf)
+ADD_SCENE(fgp,	send_conf,	SendConf)
 ADD_SCENE(fgp,	select_pins,	SelectPins)

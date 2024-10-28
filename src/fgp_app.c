@@ -13,6 +13,7 @@
 #include <src/include/fgp_app.h>
 #include <src/scenes/include/fgp_scene.h>
 #include <src/views/include/receive_view.h>
+#include <src/views/include/send_view.h>
 
 #include <protocols/printer/include/printer_proto.h>
 
@@ -69,6 +70,10 @@ static struct fgp_app *fgp_alloc(void)
 	fgp->receive_view = fgp_receive_view_alloc(fgp);
 	view_dispatcher_add_view(fgp->view_dispatcher, fgpViewReceive, fgp_receive_view_get_view(fgp->receive_view));
 	
+	// Send
+	fgp->send_view = fgp_send_view_alloc(fgp);
+	view_dispatcher_add_view(fgp->view_dispatcher, fgpViewSend, fgp_send_view_get_view(fgp->send_view));
+
 	// Scene manager
 	fgp->scene_manager = scene_manager_alloc(&fgp_scene_handlers, fgp);
 	scene_manager_next_scene(fgp->scene_manager, fgpSceneMenu);
@@ -90,6 +95,10 @@ static void fgp_free(struct fgp_app *fgp)
 	// Receive View
 	view_dispatcher_remove_view(fgp->view_dispatcher, fgpViewReceive);
 	fgp_receive_view_free(fgp->receive_view);
+
+	// Send View
+	view_dispatcher_remove_view(fgp->view_dispatcher, fgpViewSend);
+	fgp_receive_view_free(fgp->send_view);
 
 	// Variable Item List
 	view_dispatcher_remove_view(fgp->view_dispatcher, fgpViewVariableItemList);

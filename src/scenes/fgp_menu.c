@@ -36,6 +36,13 @@ void fgp_scene_menu_on_enter(void* context)
 
 	submenu_add_item(
 	fgp->submenu,
+	"Send to Printer Test",
+	fgpSceneSendConf,
+	scene_change_from_main_cb,
+	fgp);
+
+	submenu_add_item(
+	fgp->submenu,
 	"Select Pinout",
 	fgpSceneSelectPins,
 	scene_change_from_main_cb,
