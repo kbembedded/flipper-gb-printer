@@ -75,7 +75,6 @@ static struct fgp_app *fgp_alloc(void)
 
 	// Printer handling
 	fgp->printer_handle = printer_alloc();
-	printer_pin_set_default(fgp->printer_handle, PINOUT_ORIGINAL);
 
 	return fgp;
 }
