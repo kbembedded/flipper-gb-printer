@@ -16,12 +16,9 @@
 #include <src/include/tile_tools.h>
 
 /* XXX: TODO turn this in to an enum */
-#define DATA		0x80000000
+#define LINE_XFER		0x80000000
 #define PRINT		0x40000000
 #define COMPLETE	0x20000000
-
-#define WIDTH 160L
-#define HEIGHT 144L
 
 struct recv_model {
 	int count;
@@ -69,9 +66,9 @@ static void printer_callback(void *context, struct gb_image *image, enum cb_reas
 	FURI_LOG_D("printer", "printer_callback reason %d", (int)reason);
 
 	switch (reason) {
-	case reason_data:
+	case reason_line_xfer:
 		ctx->packet_cnt++;
-		view_dispatcher_send_custom_event(ctx->view_dispatcher, DATA);
+		view_dispatcher_send_custom_event(ctx->view_dispatcher, LINE_XFER);
 		break;
 	case reason_print:
 		/* TODO: XXX: 
@@ -115,7 +112,7 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 	bool same_image = false;
 	enum png_chunks chunk;
 
-	if (event == DATA)
+	if (event == LINE_XFER)
 		consumed = true;
 
 	if (event == PRINT) {
@@ -285,8 +282,8 @@ static void fgp_receive_view_enter(void *context)
 	 * so I don't think there is a good way to issue a draw callback here.
 	 * Need to figure out a better way to handle this setup.
 	 */
-	ctx->image = printer_image_buffer_alloc();
-	ctx->image_copy = printer_image_buffer_alloc();
+	ctx->image = malloc(sizeof(struct gb_image));
+	ctx->image_copy = malloc(sizeof(struct gb_image));
 	ctx->printer_handle = ctx->fgp->printer_handle;
 
 	ctx->file_handle = fgp_storage_alloc("GCIM_", ".bin");
@@ -312,8 +309,8 @@ static void fgp_receive_view_exit(void *context)
 
 	printer_stop(ctx->printer_handle);
 
-	printer_image_buffer_free(ctx->image);
-	printer_image_buffer_free(ctx->image_copy);
+	free(ctx->image);
+	free(ctx->image_copy);
 	view_free_model(ctx->view);
 }
 
