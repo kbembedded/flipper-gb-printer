@@ -11,7 +11,7 @@
 
 #include <src/include/fgp_palette.h>
 
-const char * const list_text[] = {
+static const char * const list_text[] = {
 	"Add header?",
 	"Palette:",
 	"Select Pinout",
@@ -19,7 +19,7 @@ const char * const list_text[] = {
 };
 
 
-const char * const yes_no_text[] = {
+static const char * const yes_no_text[] = {
 	"No",
 	"Yes",
 };
