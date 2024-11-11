@@ -14,7 +14,6 @@
 static const char * const list_text[] = {
 	"Add header?",
 	"Palette:",
-	"Select Pinout",
 	"Receive!",
 };
 
@@ -54,8 +53,6 @@ static void enter_callback(void* context, uint32_t index)
 	 */
 	if (index == COUNT_OF(list_text) - 1)
 		view_dispatcher_send_custom_event(fgp->view_dispatcher, 0);
-	if (index == COUNT_OF(list_text) - 2)
-		view_dispatcher_send_custom_event(fgp->view_dispatcher, 1);
 }
 
 void fgp_scene_receive_conf_on_enter(void* context)
@@ -93,12 +90,6 @@ void fgp_scene_receive_conf_on_enter(void* context)
 				      NULL,
 				      fgp);
 
-	item = variable_item_list_add(fgp->variable_item_list,
-				      list_text[3],
-				      0,
-				      NULL,
-				      fgp);
-
 	variable_item_list_set_enter_callback(fgp->variable_item_list,
 					      enter_callback,
 					      fgp);
@@ -114,8 +105,6 @@ bool fgp_scene_receive_conf_on_event(void* context, SceneManagerEvent event)
 	if (event.type == SceneManagerEventTypeCustom) {
 		if (event.event == 0)
 			view_dispatcher_switch_to_view(fgp->view_dispatcher, fgpViewReceive);
-		else
-			scene_manager_next_scene(fgp->scene_manager, fgpSceneSelectPins);
 		consumed = true;
 	}
 	return consumed;

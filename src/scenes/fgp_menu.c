@@ -34,6 +34,13 @@ void fgp_scene_menu_on_enter(void* context)
 	scene_change_from_main_cb,
 	fgp);
 
+	submenu_add_item(
+	fgp->submenu,
+	"Select Pinout",
+	fgpSceneSelectPins,
+	scene_change_from_main_cb,
+	fgp);
+
 	submenu_set_selected_item(
 	fgp->submenu,
 	scene_manager_get_scene_state(fgp->scene_manager, fgpSceneMenu));
