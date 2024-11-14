@@ -8,6 +8,7 @@
 #include <src/scenes/include/fgp_scene.h>
 
 #include <protocols/printer/include/printer_proto.h>
+#include <gblink/include/gblink_pinconf.h>
 
 /* This is a bit of a hack to save some space and not have to refactor this scene.
 * We re-use the name and pin from the global gpio pin definition, but need to
@@ -53,9 +54,9 @@ static struct itemlist_builder builder = {0};
 static void select_pins_rebuild_list(struct fgp_app *fgp);
 
 static void select_pins_set(struct fgp_app *fgp) {
-	printer_pin_set(fgp->printer_handle, PIN_SERIN, named_pins[builder.serin_index]->pin);
-	printer_pin_set(fgp->printer_handle, PIN_SEROUT, named_pins[builder.serout_index]->pin);
-	printer_pin_set(fgp->printer_handle, PIN_CLK, named_pins[builder.clk_index]->pin);
+	gblink_pin_set(printer_gblink_handle_get(fgp->printer_handle), PIN_SERIN, named_pins[builder.serin_index]->pin);
+	gblink_pin_set(printer_gblink_handle_get(fgp->printer_handle), PIN_SEROUT, named_pins[builder.serout_index]->pin);
+	gblink_pin_set(printer_gblink_handle_get(fgp->printer_handle), PIN_CLK, named_pins[builder.clk_index]->pin);
 }
 
 static void select_named_group_callback(VariableItem* item) {
