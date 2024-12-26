@@ -11,7 +11,11 @@
 
 void *fgp_send_view_alloc(struct fgp_app *fgp);
 
-void fgp_send_view_free(void *recv_ctx);
+void fgp_send_view_free(void *send_ctx);
+
+void fgp_send_view_exposure_set(void *send_ctx, uint8_t val);
+
+void fgp_send_view_tail_len_set(void *send_ctx, uint8_t val);
 
 View *fgp_send_view_get_view(void *recv_ctx);
 

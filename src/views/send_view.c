@@ -15,7 +15,9 @@
 #include <src/include/png.h>
 #include <src/include/tile_tools.h>
 
-#include "testimage.h"
+#include "nyanphin_head.h"
+#include "nyanphin_tail.h"
+#include "nyanphin_tail_signed.h"
 
 /* XXX: TODO turn this in to an enum */
 #define LINE_XFER		0x80000000
@@ -37,6 +39,9 @@ struct send_ctx {
 	void *printer_handle;
 
 	struct gb_image *image;
+
+	uint8_t exposure;
+	uint8_t tail_len;
 };
 
 static void fgp_send_view_timer(void *context)
@@ -89,17 +94,37 @@ static void fgp_send_view_enter(void *context)
 	 */
 	ctx->image = malloc(sizeof(struct gb_image));
 	ctx->printer_handle = ctx->fgp->printer_handle;
-	scanline_to_tile(ctx->image->data, GCIM_0005_bin, 20, 18);
-	ctx->image->data_sz = GCIM_0005_bin_len;
-	ctx->image->margins = 0x22;
-	ctx->image->num_sheets = 2;
-	ctx->image->exposure = 0x40;
 
 	printer_callback_context_set(ctx->printer_handle, ctx);
 	printer_callback_set(ctx->printer_handle, printer_callback);
 
 	ctx->timer = furi_timer_alloc(fgp_send_view_timer, FuriTimerTypePeriodic, ctx);
 	furi_timer_start(ctx->timer, furi_ms_to_ticks(200));
+
+	// XXX: Nice and hacky!
+	scanline_to_tile(ctx->image->data, nyanphin_head_bin, 20, 18);
+	ctx->image->data_sz = nyanphin_head_bin_len;
+	ctx->image->margins = 0x10; // Header, no footer for first image
+	ctx->image->num_sheets = 1;
+	ctx->image->exposure = ctx->exposure;
+	printer_send_start(ctx->printer_handle, ctx->image);
+
+	// Next, the unsigned tail, if any
+	if (ctx->tail_len > 1) {
+		scanline_to_tile(ctx->image->data, nyanphin_tail_bin, 20, 18);
+		ctx->image->data_sz = nyanphin_tail_bin_len;
+		ctx->image->margins = 0x00; // No header or footer for these
+		ctx->image->num_sheets = ctx->tail_len - 1;
+		ctx->image->exposure = ctx->exposure;
+		printer_send_start(ctx->printer_handle, ctx->image);
+	}
+
+	// Last, the signed tail
+	scanline_to_tile(ctx->image->data, nyanphin_tail_signed_bin, 20, 18);
+	ctx->image->data_sz = nyanphin_tail_signed_bin_len;
+	ctx->image->margins = 0x03; // No header, but must have a footer of at least 3
+	ctx->image->num_sheets = 1;
+	ctx->image->exposure = ctx->exposure;
 	printer_send_start(ctx->printer_handle, ctx->image);
 }
 
@@ -156,6 +181,26 @@ void *fgp_send_view_alloc(struct fgp_app *fgp)
 	view_set_custom_callback(ctx->view, fgp_send_view_event);
 
 	return ctx;
+}
+
+void fgp_send_view_exposure_set(void *send_ctx, uint8_t val)
+{
+	struct send_ctx *ctx = send_ctx;
+
+	// Max exposure value is 0x7f
+	furi_check(val <= 0x7f);
+
+	ctx->exposure = val;
+}
+
+void fgp_send_view_tail_len_set(void *send_ctx, uint8_t val)
+{
+	struct send_ctx *ctx = send_ctx;
+
+	// So long as the tail is at least one in length its fine
+	furi_check(val > 0);
+
+	ctx->tail_len = val;
 }
 
 void fgp_send_view_free(void *send_ctx)
