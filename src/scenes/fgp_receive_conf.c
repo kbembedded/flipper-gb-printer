@@ -1,11 +1,7 @@
 // SPDX-License-Identifier: BSD-2-Clause
 // Copyright (c) 2024 KBEmbedded
 
-#include <furi.h>
-#include <gui/modules/submenu.h>
 #include <gui/modules/variable_item_list.h>
-#include <storage/storage.h>
-#include <lib/toolbox/value_index.h>
 #include <src/include/fgp_app.h>
 #include <src/scenes/include/fgp_scene.h>
 
