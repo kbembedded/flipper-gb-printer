@@ -7,6 +7,8 @@
 #include <src/include/fgp_app.h>
 #include <src/scenes/include/fgp_scene.h>
 
+#include <flipper_gb_printer_icons.h>
+
 // gblink protocol support
 #include <protocols/printer/include/printer_proto.h>
 #include <protocols/printer/include/printer_receive.h>
@@ -334,12 +336,26 @@ static void fgp_receive_view_draw(Canvas *canvas, void* view_model)
 {
 	struct recv_model *model = view_model;
 	char string[26];
-	snprintf(string, sizeof(string), "Received: %d", model->count);
-	canvas_draw_str(canvas, 18, 13, string);
-	snprintf(string, sizeof(string), "Converted to PNG: %d", model->converted);
-	canvas_draw_str(canvas, 18, 21, string);
-	snprintf(string, sizeof(string), "Errors: %d", model->errors);
-	canvas_draw_str(canvas, 18, 29, string);
+	canvas_draw_str(canvas, 38, 30, "Recv:");
+	snprintf(string, sizeof(string), "%d", model->count);
+	canvas_draw_str(canvas, 66, 30, string);
+
+	canvas_draw_str(canvas, 38, 38, "Conv:");
+	snprintf(string, sizeof(string), "%d", model->converted);
+	canvas_draw_str(canvas, 66, 38, string);
+
+	canvas_draw_str(canvas, 38, 46, "Err:");
+	snprintf(string, sizeof(string), "%d", model->errors);
+	canvas_draw_str(canvas, 66, 46, string);
+
+	canvas_draw_icon(canvas, 96, 3, &I_gbc_32x58);
+	canvas_draw_icon(canvas, 0, 2, &I_flipper_w_cable_26x61);
+	canvas_draw_frame(canvas, 91, 16, 5, 6);
+	canvas_draw_box(canvas, 88, 18, 3, 2);
+	canvas_draw_box(canvas, 87, 2, 2, 17);
+	canvas_draw_box(canvas, 24, 1, 63, 2);
+
+	/* TODO: Animate when a link is established */
 }
 
 View *fgp_receive_view_get_view(void *context)
