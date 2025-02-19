@@ -40,8 +40,6 @@ struct recv_ctx {
 
 	struct gb_image *volatile_image;
 	struct gb_image *image;
-	/* TODO: Once tile to scanline can do better inplace, remove this */
-	struct gb_image *image_copy;
 	int packet_cnt;
 
 	// PNG handling
@@ -73,22 +71,16 @@ static void printer_callback(void *context, struct gb_image *image, enum cb_reas
 		view_dispatcher_send_custom_event(ctx->view_dispatcher, LINE_XFER);
 		break;
 	case reason_print:
-		/* TODO: XXX: 
-		 * Interleave prints and processing here.
-		 * For the first photo, its safe to mark this as "printed" immediately
-		 * after copying the buffer. This lets the next print start quickly, e.g.
-		 * for doing a print all from Photo! or other prints that may take multiple
-		 * prints like panoramas.
-		 * Once the next photo comes in, we need to check if the save process is
-		 * still running, if not, then repeat above. If so, then I don't know yet.
-		 * Need to put this somewhere, somehow, maybe have a custom event re-call
-		 * this?
-		 * Set up a return.
-		 * Hmm.
-		 * This logic might need to move to the event handler, not here. In that
-		 * case, we probably need to double buffer. So if the first print is not
-		 * yet done, the second one can be copied here, and the event can, do something
-		 * with that and hold off on marking it printed.
+		/* Set up a pointer to the image just received and call our
+		 * local handler for dealing with a print command.
+		 * Our handler will copy this data to its own local image buffer
+		 * before marking the print as complete. Since events are queued
+		 * and dispatched sequentially, once the image is marked as
+		 * printed, the receive proto handler will begin to receive the
+		 * next image. If we end up here again and the previous handler
+		 * call is still running another event is simply added to the
+		 * queue but that image will not have been marked as printed so
+		 * the receive proto will tell the GB that it is still printing.
 		 */
 		ctx->volatile_image = image;
 		view_dispatcher_send_custom_event(ctx->view_dispatcher, PRINT);
@@ -119,14 +111,7 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 
 	if (event == PRINT) {
 		fs_tmp = furi_string_alloc();
-		/* Copy the buffer from the printer data here, and then tell the
-		 * printer it can continue receiving.
-		 */
-		/* XXX: TODO: NOTE: I believe this is safe as I don't think this
-		 * event callback handle will be called again until this completes.
-		 * I need to verify which thread calls this and how the queue is
-		 * managed.
-		 */
+
 		/* Before we clobber the image data, take note of the margins.
 		 * If the last bottom margin was 0, and this top margin is 0,
 		 * then we need to append this image to the last image we saved.
@@ -136,8 +121,12 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		if (!(image->margins & 0x0f) && image->data_sz)
 			last_margin_zero = true;
 
-		/* This copies everything except data */
+		/* Copy the volatile image from the printer protocol handler to
+		 * a buffer we can work with locally after the print is marked
+		 * as complete.
+		 */
 		memcpy(image, ctx->volatile_image, sizeof(struct gb_image));
+		printer_receive_print_complete(ctx->printer_handle);
 
 		/* Now look at the margins of this image, if there is no margin
 		 * at the start, and there was no margin at the end of the last
@@ -157,20 +146,10 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		px_x = 160; // TODO: Photo! transfer will be less than this
 		px_y = image->data_sz / 40; // 40 is bytes per line, 160 px / 4 (px/byte)
 
-		/* Copy the volatile data to our local copy. */
-		/* TODO: This will go away at some point */
-		memcpy(ctx->image_copy->data, ctx->volatile_image->data, image->data_sz);
-
-
-		printer_receive_print_complete(ctx->printer_handle);
 		with_view_model(ctx->view,
 				struct recv_model * model,
 				{ model->count++; },
 				false);
-
-		/* Now copy the image data, but as scanlines rather than tiles */
-		/* Tiles are 8x8 px */
-		tile_to_scanline(image->data, ctx->image_copy->data, px_x / 8, px_y / 8);
 
 		/* Save binary version always */
 		/* We don't care if this was previously opened or not, we just
@@ -178,7 +157,7 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 		 */
 		if (ctx->fgp->options & OPT_SAVE_BIN) {
 			error |= !fgp_storage_open(ctx->file_handle, ".bin");
-			error |= !fgp_storage_write(ctx->file_handle, ctx->image_copy->data, image->data_sz);
+			error |= !fgp_storage_write(ctx->file_handle, image, image->data_sz);
 			error |= !fgp_storage_close(ctx->file_handle);
 		}
 
@@ -189,12 +168,17 @@ static bool fgp_receive_view_event(uint32_t event, void *context)
 			error |= !fgp_storage_open(ctx->file_handle, "-hdr.bin");
 			if (!same_image)
 				error |= !fgp_storage_write(ctx->file_handle, "GB-BIN01", 8);
-			error |= !fgp_storage_write(ctx->file_handle, ctx->image_copy->data, image->data_sz);
+			error |= !fgp_storage_write(ctx->file_handle, image, image->data_sz);
 			error |= !fgp_storage_close(ctx->file_handle);
 		}
 
 		if (!(ctx->fgp->options & OPT_SAVE_PNG))
 			goto skip_png;
+
+		/* For saving to a PNG, the image data needs to be converted from
+		 * tiles to scanlines.
+		 */
+		tile_to_scanline(image->data, px_x / 8, px_y / 8);
 
 		/* Save PNG */
 		if (!same_image) {
@@ -291,7 +275,6 @@ static void fgp_receive_view_enter(void *context)
 	 * Need to figure out a better way to handle this setup.
 	 */
 	ctx->image = malloc(sizeof(struct gb_image));
-	ctx->image_copy = malloc(sizeof(struct gb_image));
 	ctx->printer_handle = ctx->fgp->printer_handle;
 
 	ctx->file_handle = fgp_storage_alloc("GCIM_", ".bin");
@@ -318,7 +301,6 @@ static void fgp_receive_view_exit(void *context)
 	printer_stop(ctx->printer_handle);
 
 	free(ctx->image);
-	free(ctx->image_copy);
 	view_free_model(ctx->view);
 }
 
