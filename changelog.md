@@ -1,3 +1,6 @@
+# v0.5
+- Add printer protocol compression support
+
 # v0.4
 - Move pinout selection to main menu
 - Update to improved pinout configuration handling w/ auto-save and auto-load pinouts

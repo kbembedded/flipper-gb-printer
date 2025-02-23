@@ -5,7 +5,7 @@ App(
     entry_point="fgp_app",
     stack_size=2 * 1024,
     fap_category="GPIO",
-    fap_version="0.4",
+    fap_version="0.5",
     fap_icon="fgp_icon.png",
     fap_description="Print from a Game Boy to Flipper Zero saving as PNG",
     fap_author="Kris Bahnsen",
