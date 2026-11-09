@@ -1,4 +1,6 @@
 # Flipper Zero Game Boy Printer Emulator
+[![AI-DECLARATION: none](https://img.shields.io/badge/䷼%20AI--DECLARATION-none-dcfce7?labelColor=dcfce7)](https://ai-declaration.md)
+
 <p align='center'>
   <img src='https://github.com/kbembedded/flipper-gb-printer/blob/main/.assets/GCIM_0011-bw-4x-color.png' width=288>
 </p>
